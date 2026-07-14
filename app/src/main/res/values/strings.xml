@@ -3,6 +3,10 @@
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
     <string name="action_check_updates">Check for updates</string>
+    <string name="menu_change_category">Change category</string>
+    <string name="menu_uninstall">Uninstall</string>
+    <string name="menu_app_info">App info</string>
+    <string name="action_open_failed">Can\'t open</string>
     <string name="update_checking">Checking for updates…</string>
     <string name="update_check_failed">Update check failed</string>
     <string name="update_up_to_date">Already up to date</string>

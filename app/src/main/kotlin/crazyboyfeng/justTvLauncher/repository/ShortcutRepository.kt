@@ -49,6 +49,10 @@ class ShortcutRepository(private val context: Context) {
         openCountData.update(shortcut.id, shortcut.openCount)
     }
 
+    fun updateCategory(id: String, category: String) {
+        categoryData.update(id, category)
+    }
+
     fun deleteById(id: String) {
         categoryData.delete(id)
         openCountData.delete(id)

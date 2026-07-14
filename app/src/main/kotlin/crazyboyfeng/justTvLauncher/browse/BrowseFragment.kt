@@ -1,13 +1,16 @@
 package crazyboyfeng.justTvLauncher.browse
 
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -40,7 +43,8 @@ class BrowseFragment : BrowseSupportFragment() {
             adapter = BrowseAdapter(
                 it!!,
                 getString(R.string.app_name),
-                getString(R.string.action_check_updates)
+                getString(R.string.action_check_updates),
+                onShortcutLongClick = { shortcut -> showContextMenu(shortcut); true }
             )
             // Re-focus the just-opened shortcut at its new, re-sorted position.
             viewModel.consumePendingSelection()?.let(::setSelect)
@@ -111,6 +115,52 @@ class BrowseFragment : BrowseSupportFragment() {
             startActivity(intent)
         } else {
             Log.w(TAG, "No launch intent for $packageName")
+        }
+    }
+
+    private fun showContextMenu(shortcut: Shortcut) {
+        val items = arrayOf(
+            getString(R.string.menu_change_category),
+            getString(R.string.menu_uninstall),
+            getString(R.string.menu_app_info),
+        )
+        AlertDialog.Builder(requireContext())
+            .setTitle(shortcut.title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showCategoryPicker(shortcut)
+                    1 -> startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
+                    2 -> startAppIntent(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
+                    )
+                }
+            }
+            .show()
+    }
+
+    private fun showCategoryPicker(shortcut: Shortcut) {
+        val categories = (viewModel.availableCategories() +
+                getString(R.string.title_apps) + getString(R.string.title_system))
+            .distinct()
+            .filter { it != shortcut.category }
+        if (categories.isEmpty()) return
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.menu_change_category)
+            .setItems(categories.toTypedArray()) { _, which ->
+                viewModel.setCategory(shortcut, categories[which])
+            }
+            .show()
+    }
+
+    private fun packageUri(shortcut: Shortcut): Uri =
+        Uri.fromParts("package", shortcut.id, null)
+
+    private fun startAppIntent(intent: Intent) {
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No activity for $intent", e)
+            toast(R.string.action_open_failed)
         }
     }
 

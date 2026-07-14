@@ -7,7 +7,9 @@ import crazyboyfeng.justTvLauncher.R
 import crazyboyfeng.justTvLauncher.databinding.PresenterShortcutCardBinding
 import crazyboyfeng.justTvLauncher.model.Shortcut
 
-class ShortcutCardPresenter : Presenter() {
+class ShortcutCardPresenter(
+    private val onLongClick: (Shortcut) -> Boolean,
+) : Presenter() {
     private var width = 320
     private var height = 180
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
@@ -22,6 +24,7 @@ class ShortcutCardPresenter : Presenter() {
     override fun onBindViewHolder(viewHolder: ViewHolder, item: Any?) {
         val shortcut = item as Shortcut
         val binding = PresenterShortcutCardBinding.bind(viewHolder.view)
+        binding.root.setOnLongClickListener { onLongClick(shortcut) }
         if (shortcut.banner != null) {
             shortcut.banner.setBounds(0, 0, width, height)
             binding.content.setCompoundDrawables(shortcut.banner, null, null, null)
@@ -36,5 +39,6 @@ class ShortcutCardPresenter : Presenter() {
     override fun onUnbindViewHolder(viewHolder: ViewHolder) {
         val binding = PresenterShortcutCardBinding.bind(viewHolder.view)
         binding.content.setCompoundDrawables(null, null, null, null)
+        binding.root.setOnLongClickListener(null)
     }
 }

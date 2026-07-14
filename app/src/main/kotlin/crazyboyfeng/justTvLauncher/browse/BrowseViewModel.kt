@@ -70,6 +70,17 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun consumePendingSelection(): Shortcut? = pendingSelection?.also { pendingSelection = null }
 
+    fun availableCategories(): List<String> =
+        browseContent.value?.map { it.category }?.distinct() ?: emptyList()
+
+    fun setCategory(shortcut: Shortcut, category: String) {
+        shortcut.category = category
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { shortcutRepository.updateCategory(shortcut.id, category) }
+            loadShortcutGroupList()
+        }
+    }
+
     fun findPosition(shortcut: Shortcut): Pair<Int, Int> {
         val shortcutGroupList = browseContent.value!!
         val x = shortcutGroupList.indexOfFirst { it.category == shortcut.category }
