@@ -2,7 +2,6 @@ package crazyboyfeng.justTvLauncher.repository
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import crazyboyfeng.justTvLauncher.model.Shortcut
 
 class ShortcutRepository(private val context: Context) {
@@ -14,9 +13,7 @@ class ShortcutRepository(private val context: Context) {
     private val openCountData = OpenCountRepository.getInstance(context)
     fun load(): Set<Shortcut> {
         val all = load(Intent.CATEGORY_LAUNCHER)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            all.addAll(load(Intent.CATEGORY_LEANBACK_LAUNCHER))
-        }
+        all.addAll(load(Intent.CATEGORY_LEANBACK_LAUNCHER))
         return all
     }
 
@@ -32,11 +29,7 @@ class ShortcutRepository(private val context: Context) {
                 continue
             }
             val label = it.activityInfo.loadLabel(packageManager).toString()
-            val banner = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
-                it.activityInfo.loadBanner(packageManager)
-            } else {
-                null
-            }
+            val banner = it.activityInfo.loadBanner(packageManager)
             val icon = if (banner == null) {
                 it.activityInfo.loadIcon(packageManager)
             } else {

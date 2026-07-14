@@ -4,10 +4,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.leanback.app.BrowseSupportFragment
 import androidx.leanback.widget.ListRowPresenter
 import androidx.lifecycle.ViewModelProvider
@@ -46,14 +47,13 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun launch(packageName: String) {
         val packageManager = requireContext().packageManager
-        var intent: Intent? = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            intent = packageManager.getLeanbackLaunchIntentForPackage(packageName)
+        val intent = packageManager.getLeanbackLaunchIntentForPackage(packageName)
+            ?: packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            startActivity(intent)
+        } else {
+            Log.w(TAG, "No launch intent for $packageName")
         }
-        if (intent == null) {
-            intent = packageManager.getLaunchIntentForPackage(packageName)
-        }
-        startActivity(intent)
     }
 
 
@@ -67,8 +67,14 @@ class BrowseFragment : BrowseSupportFragment() {
     override fun onStart() {
         super.onStart()
         val context = requireContext()
-        context.registerReceiver(timeTickReceiver, timeTickReceiver.getIntentFilter())
-        context.registerReceiver(packageChangedReceiver, packageChangedReceiver.getIntentFilter())
+        ContextCompat.registerReceiver(
+            context, timeTickReceiver, timeTickReceiver.getIntentFilter(),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        ContextCompat.registerReceiver(
+            context, packageChangedReceiver, packageChangedReceiver.getIntentFilter(),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onStop() {
@@ -118,6 +124,7 @@ class BrowseFragment : BrowseSupportFragment() {
     }
 
     companion object {
+        private const val TAG = "BrowseFragment"
         private const val SCHEME_PACKAGE = "package"
     }
 }
