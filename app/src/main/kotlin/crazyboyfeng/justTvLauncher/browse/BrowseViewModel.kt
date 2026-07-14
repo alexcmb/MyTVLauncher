@@ -59,9 +59,12 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         Log.v(TAG, "${shortcut.id}: ${shortcut.openCount} + 1")
         shortcut.openCount++
         pendingSelection = shortcut
+        // Re-sort from the already-loaded shortcuts; no PackageManager re-scan.
+        val shortcuts = browseContent.value?.flatMap { it.shortcutList } ?: listOf(shortcut)
+        browseContent.value = groupAndSort(shortcuts)
+        // Persist the new count off the main thread.
         viewModelScope.launch {
             withContext(Dispatchers.IO) { shortcutRepository.updateOpenCount(shortcut) }
-            loadShortcutGroupList()
         }
     }
 
