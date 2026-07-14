@@ -3,6 +3,8 @@ package crazyboyfeng.justTvLauncher.repository
 import android.content.Context
 import android.content.Intent
 import crazyboyfeng.justTvLauncher.model.Shortcut
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class ShortcutRepository(private val context: Context) {
     // Contain IO operations.
@@ -11,10 +13,10 @@ class ShortcutRepository(private val context: Context) {
     // when using in multiple components at the same time.
     private val categoryData = CategoryRepository.getInstance(context)
     private val openCountData = OpenCountRepository.getInstance(context)
-    fun load(): Set<Shortcut> {
+    suspend fun load(): Set<Shortcut> = withContext(Dispatchers.IO) {
         val all = load(Intent.CATEGORY_LAUNCHER)
         all.addAll(load(Intent.CATEGORY_LEANBACK_LAUNCHER))
-        return all
+        all
     }
 
     private fun load(category: String): MutableSet<Shortcut> {

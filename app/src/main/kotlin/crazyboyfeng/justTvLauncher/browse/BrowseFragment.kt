@@ -29,13 +29,14 @@ class BrowseFragment : BrowseSupportFragment() {
         viewModel = ViewModelProvider(this, factory).get(BrowseViewModel::class.java)
         viewModel.browseContent.observe(this) {
             adapter = BrowseAdapter(it!!)
+            // Re-focus the just-opened shortcut at its new, re-sorted position.
+            viewModel.consumePendingSelection()?.let(::setSelect)
         }
         setOnItemViewClickedListener { _, item, _, _ ->
             when (item) {
                 is Shortcut -> {
                     launch(item.id)
                     viewModel.incrementOpenCount(item)
-                    setSelect(item)
                 }
             }
         }
