@@ -6,11 +6,16 @@ import androidx.leanback.widget.HeaderItem
 import androidx.leanback.widget.ListRow
 import androidx.leanback.widget.ListRowPresenter
 import crazyboyfeng.justTvLauncher.model.ShortcutGroup
+import crazyboyfeng.justTvLauncher.model.UpdateAction
 
-class BrowseAdapter(shortcutGroupList: List<ShortcutGroup>) :
-    ArrayObjectAdapter(ListRowPresenter()) {
+class BrowseAdapter(
+    shortcutGroupList: List<ShortcutGroup>,
+    updateRowHeader: String,
+    updateActionTitle: String,
+) : ArrayObjectAdapter(ListRowPresenter()) {
     init {
         addShortcutGroupList(shortcutGroupList)
+        addUpdateRow(updateRowHeader, updateActionTitle)
     }
 
     private fun addShortcutGroupList(shortcutGroupList: List<ShortcutGroup>) {
@@ -22,6 +27,12 @@ class BrowseAdapter(shortcutGroupList: List<ShortcutGroup>) :
             val headerItem = HeaderItem(it.category)
             add(ListRow(headerItem, listRowAdapter))
         }
+    }
+
+    private fun addUpdateRow(header: String, actionTitle: String) {
+        val rowAdapter = ArrayObjectAdapter(ActionCardPresenter())
+        rowAdapter.add(UpdateAction(actionTitle))
+        add(ListRow(HeaderItem(header), rowAdapter))
     }
 
     companion object {
