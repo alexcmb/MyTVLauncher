@@ -5,21 +5,19 @@ import androidx.leanback.widget.ArrayObjectAdapter
 import androidx.leanback.widget.HeaderItem
 import androidx.leanback.widget.ListRow
 import androidx.leanback.widget.ListRowPresenter
-import crazyboyfeng.justTvLauncher.model.HiddenAppsAction
+import crazyboyfeng.justTvLauncher.model.MenuAction
 import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.model.ShortcutGroup
-import crazyboyfeng.justTvLauncher.model.UpdateAction
 
 class BrowseAdapter(
     shortcutGroupList: List<ShortcutGroup>,
-    actionsRowHeader: String,
-    updateActionTitle: String,
-    hiddenAppsActionTitle: String?,
+    menuRowHeader: String,
+    menuActionTitle: String,
     onShortcutLongClick: (Shortcut) -> Boolean,
 ) : ArrayObjectAdapter(ListRowPresenter()) {
     init {
         addShortcutGroupList(shortcutGroupList, onShortcutLongClick)
-        addActionsRow(actionsRowHeader, updateActionTitle, hiddenAppsActionTitle)
+        addMenuRow(menuRowHeader, menuActionTitle)
     }
 
     private fun addShortcutGroupList(
@@ -36,12 +34,9 @@ class BrowseAdapter(
         }
     }
 
-    private fun addActionsRow(header: String, updateTitle: String, hiddenAppsTitle: String?) {
+    private fun addMenuRow(header: String, menuTitle: String) {
         val rowAdapter = ArrayObjectAdapter(ActionCardPresenter())
-        rowAdapter.add(UpdateAction(updateTitle))
-        if (hiddenAppsTitle != null) {
-            rowAdapter.add(HiddenAppsAction(hiddenAppsTitle))
-        }
+        rowAdapter.add(MenuAction(menuTitle))
         add(ListRow(HeaderItem(header), rowAdapter))
     }
 

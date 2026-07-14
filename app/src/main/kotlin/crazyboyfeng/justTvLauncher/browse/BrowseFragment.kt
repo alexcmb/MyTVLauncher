@@ -20,9 +20,8 @@ import androidx.leanback.widget.ListRowPresenter
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import crazyboyfeng.justTvLauncher.R
-import crazyboyfeng.justTvLauncher.model.HiddenAppsAction
+import crazyboyfeng.justTvLauncher.model.MenuAction
 import crazyboyfeng.justTvLauncher.model.Shortcut
-import crazyboyfeng.justTvLauncher.model.UpdateAction
 import crazyboyfeng.justTvLauncher.update.UpdateManager
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -41,12 +40,10 @@ class BrowseFragment : BrowseSupportFragment() {
             ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
         viewModel = ViewModelProvider(this, factory).get(BrowseViewModel::class.java)
         viewModel.browseContent.observe(this) {
-            val hiddenCount = viewModel.hiddenApps.size
             adapter = BrowseAdapter(
                 it!!,
                 getString(R.string.app_name),
-                getString(R.string.action_check_updates),
-                if (hiddenCount > 0) getString(R.string.action_hidden_apps, hiddenCount) else null,
+                getString(R.string.action_menu),
                 onShortcutLongClick = { shortcut -> showContextMenu(shortcut); true }
             )
             // Re-focus the just-opened shortcut at its new, re-sorted position.
@@ -58,8 +55,7 @@ class BrowseFragment : BrowseSupportFragment() {
                     launch(item.id)
                     viewModel.incrementOpenCount(item)
                 }
-                is UpdateAction -> checkForUpdates()
-                is HiddenAppsAction -> showHiddenAppsDialog()
+                is MenuAction -> showGlobalMenu()
             }
         }
     }
@@ -120,6 +116,19 @@ class BrowseFragment : BrowseSupportFragment() {
         } else {
             Log.w(TAG, "No launch intent for $packageName")
         }
+    }
+
+    private fun showGlobalMenu() {
+        val dialog = MenuDialog(requireContext())
+            .setTitle(getString(R.string.action_menu))
+            .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
+        val hiddenCount = viewModel.hiddenApps.size
+        if (hiddenCount > 0) {
+            dialog.addItem(getString(R.string.action_hidden_apps, hiddenCount)) {
+                showHiddenAppsDialog()
+            }
+        }
+        dialog.show()
     }
 
     private fun showContextMenu(shortcut: Shortcut) {

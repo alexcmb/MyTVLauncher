@@ -5,9 +5,9 @@ import android.view.ViewGroup
 import androidx.leanback.widget.Presenter
 import crazyboyfeng.justTvLauncher.R
 import crazyboyfeng.justTvLauncher.databinding.PresenterShortcutCardBinding
-import crazyboyfeng.justTvLauncher.model.CardAction
+import crazyboyfeng.justTvLauncher.model.MenuAction
 
-/** Presents a simple text card for a [CardAction], reusing the shortcut card layout. */
+/** Presents the "Menu" card, reusing the shortcut card layout. */
 class ActionCardPresenter : Presenter() {
     override fun onCreateViewHolder(parent: ViewGroup): ViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -16,7 +16,7 @@ class ActionCardPresenter : Presenter() {
     }
 
     override fun onBindViewHolder(viewHolder: ViewHolder, item: Any?) {
-        val action = item as CardAction
+        val action = item as MenuAction
         val binding = PresenterShortcutCardBinding.bind(viewHolder.view)
         binding.content.text = action.title
         binding.root.contentDescription = action.title
