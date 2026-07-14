@@ -29,10 +29,27 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
 
+      - name: Derive version from tag
+        id: ver
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            RAW="${GITHUB_REF_NAME#v}"
+          else
+            RAW="0.0.0"
+          fi
+          IFS='.' read -r MA MI PA <<< "$RAW"
+          MA=${MA:-0}; MI=${MI:-0}; PA=${PA:-0}
+          CODE=$((10#$MA * 10000 + 10#$MI * 100 + 10#$PA))
+          echo "name=$RAW" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Version $RAW -> versionCode $CODE"
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon \
+            -PappVersionName=${{ steps.ver.outputs.name }} \
+            -PappVersionCode=${{ steps.ver.outputs.code }}
 
       - name: Stage APK with version name
         run: |
