@@ -20,6 +20,7 @@ import androidx.leanback.widget.ListRowPresenter
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import crazyboyfeng.justTvLauncher.R
+import crazyboyfeng.justTvLauncher.model.HiddenAppsAction
 import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.model.UpdateAction
 import crazyboyfeng.justTvLauncher.update.UpdateManager
@@ -40,10 +41,12 @@ class BrowseFragment : BrowseSupportFragment() {
             ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
         viewModel = ViewModelProvider(this, factory).get(BrowseViewModel::class.java)
         viewModel.browseContent.observe(this) {
+            val hiddenCount = viewModel.hiddenApps.size
             adapter = BrowseAdapter(
                 it!!,
                 getString(R.string.app_name),
                 getString(R.string.action_check_updates),
+                if (hiddenCount > 0) getString(R.string.action_hidden_apps, hiddenCount) else null,
                 onShortcutLongClick = { shortcut -> showContextMenu(shortcut); true }
             )
             // Re-focus the just-opened shortcut at its new, re-sorted position.
@@ -56,6 +59,7 @@ class BrowseFragment : BrowseSupportFragment() {
                     viewModel.incrementOpenCount(item)
                 }
                 is UpdateAction -> checkForUpdates()
+                is HiddenAppsAction -> showHiddenAppsDialog()
             }
         }
     }
@@ -121,6 +125,7 @@ class BrowseFragment : BrowseSupportFragment() {
     private fun showContextMenu(shortcut: Shortcut) {
         val items = arrayOf(
             getString(R.string.menu_change_category),
+            getString(R.string.menu_hide),
             getString(R.string.menu_uninstall),
             getString(R.string.menu_app_info),
         )
@@ -129,12 +134,26 @@ class BrowseFragment : BrowseSupportFragment() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> showCategoryPicker(shortcut)
-                    1 -> startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
-                    2 -> startAppIntent(
+                    1 -> viewModel.hideApp(shortcut)
+                    2 -> startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
+                    3 -> startAppIntent(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
                     )
                 }
             }
+            .show()
+    }
+
+    private fun showHiddenAppsDialog() {
+        val hidden = viewModel.hiddenApps
+        if (hidden.isEmpty()) {
+            toast(R.string.no_hidden_apps)
+            return
+        }
+        val labels = hidden.map { it.title }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_hidden_apps_title)
+            .setItems(labels) { _, which -> viewModel.showApp(hidden[which]) }
             .show()
     }
 

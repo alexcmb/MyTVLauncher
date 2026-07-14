@@ -13,6 +13,7 @@ class ShortcutRepository(private val context: Context) {
     // when using in multiple components at the same time.
     private val categoryData = CategoryRepository.getInstance(context)
     private val openCountData = OpenCountRepository.getInstance(context)
+    private val hiddenData = HiddenAppsRepository.getInstance(context)
     suspend fun load(): Set<Shortcut> = withContext(Dispatchers.IO) {
         val all = load(Intent.CATEGORY_LAUNCHER)
         all.addAll(load(Intent.CATEGORY_LEANBACK_LAUNCHER))
@@ -53,9 +54,16 @@ class ShortcutRepository(private val context: Context) {
         categoryData.update(id, category)
     }
 
+    fun hiddenIds(): Set<String> = hiddenData.query()
+
+    fun hide(id: String) = hiddenData.add(id)
+
+    fun unhide(id: String) = hiddenData.remove(id)
+
     fun deleteById(id: String) {
         categoryData.delete(id)
         openCountData.delete(id)
+        hiddenData.remove(id)
     }
 
 }

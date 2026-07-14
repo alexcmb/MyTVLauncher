@@ -26,19 +26,41 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     // The shortcut just opened, to be re-focused once the re-sorted list is published.
     private var pendingSelection: Shortcut? = null
 
+    // Apps hidden from the grid, kept aside so they can be restored.
+    var hiddenApps: List<Shortcut> = emptyList()
+        private set
+
     init {
         loadShortcutGroupList()
     }
 
     /**
-     * Full (re)load: queries the PackageManager off the main thread, then publishes
-     * the grouped/sorted result. Any in-flight load is cancelled first.
+     * Full (re)load: queries the PackageManager off the main thread, splits out the
+     * hidden apps, then publishes the grouped/sorted visible ones. Any in-flight load
+     * is cancelled first.
      */
     fun loadShortcutGroupList() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val groups = groupAndSort(shortcutRepository.load())
-            browseContent.value = groups
+            val all = shortcutRepository.load()
+            val hiddenIds = withContext(Dispatchers.IO) { shortcutRepository.hiddenIds() }
+            val (hidden, visible) = all.partition { it.id in hiddenIds }
+            hiddenApps = hidden.sortedBy { it.title }
+            browseContent.value = groupAndSort(visible)
+        }
+    }
+
+    fun hideApp(shortcut: Shortcut) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { shortcutRepository.hide(shortcut.id) }
+            loadShortcutGroupList()
+        }
+    }
+
+    fun showApp(shortcut: Shortcut) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { shortcutRepository.unhide(shortcut.id) }
+            loadShortcutGroupList()
         }
     }
 
