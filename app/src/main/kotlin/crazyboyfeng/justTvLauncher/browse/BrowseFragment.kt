@@ -123,23 +123,17 @@ class BrowseFragment : BrowseSupportFragment() {
     }
 
     private fun showContextMenu(shortcut: Shortcut) {
-        val items = arrayOf(
-            getString(R.string.menu_change_category),
-            getString(R.string.menu_hide),
-            getString(R.string.menu_uninstall),
-            getString(R.string.menu_app_info),
-        )
-        AlertDialog.Builder(requireContext())
+        MenuDialog(requireContext())
             .setTitle(shortcut.title)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> showCategoryPicker(shortcut)
-                    1 -> viewModel.hideApp(shortcut)
-                    2 -> startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
-                    3 -> startAppIntent(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
-                    )
-                }
+            .addItem(getString(R.string.menu_change_category)) { showCategoryPicker(shortcut) }
+            .addItem(getString(R.string.menu_hide)) { viewModel.hideApp(shortcut) }
+            .addItem(getString(R.string.menu_uninstall)) {
+                startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
+            }
+            .addItem(getString(R.string.menu_app_info)) {
+                startAppIntent(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
+                )
             }
             .show()
     }
@@ -150,11 +144,10 @@ class BrowseFragment : BrowseSupportFragment() {
             toast(R.string.no_hidden_apps)
             return
         }
-        val labels = hidden.map { it.title }.toTypedArray()
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.action_hidden_apps_title)
-            .setItems(labels) { _, which -> viewModel.showApp(hidden[which]) }
-            .show()
+        val dialog = MenuDialog(requireContext())
+            .setTitle(getString(R.string.action_hidden_apps_title))
+        hidden.forEach { app -> dialog.addItem(app.title) { viewModel.showApp(app) } }
+        dialog.show()
     }
 
     private fun showCategoryPicker(shortcut: Shortcut) {
@@ -163,12 +156,12 @@ class BrowseFragment : BrowseSupportFragment() {
             .distinct()
             .filter { it != shortcut.category }
         if (categories.isEmpty()) return
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.menu_change_category)
-            .setItems(categories.toTypedArray()) { _, which ->
-                viewModel.setCategory(shortcut, categories[which])
-            }
-            .show()
+        val dialog = MenuDialog(requireContext())
+            .setTitle(getString(R.string.menu_change_category))
+        categories.forEach { category ->
+            dialog.addItem(category) { viewModel.setCategory(shortcut, category) }
+        }
+        dialog.show()
     }
 
     private fun packageUri(shortcut: Shortcut): Uri =
