@@ -12,7 +12,8 @@ class CategoryRepository private constructor(private val context: Context) {
     private val editor = sharedPreferences.edit()
     fun load(packageName: String): String {
         val packageInfo = context.packageManager.getPackageInfo(packageName, 0)
-        return if (packageInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) {
+        val flags = packageInfo.applicationInfo?.flags ?: 0
+        return if (flags and ApplicationInfo.FLAG_SYSTEM != 0) {
             context.getString(R.string.title_system)
         } else {
             context.getString(R.string.title_apps)

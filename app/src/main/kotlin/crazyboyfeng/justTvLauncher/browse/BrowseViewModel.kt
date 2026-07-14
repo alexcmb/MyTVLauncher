@@ -4,9 +4,14 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.model.ShortcutGroup
 import crazyboyfeng.justTvLauncher.repository.ShortcutRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The lifecycle of this view-model is consistent with the application.
@@ -16,35 +21,54 @@ import crazyboyfeng.justTvLauncher.repository.ShortcutRepository
 class BrowseViewModel(application: Application) : AndroidViewModel(application) {
     private val shortcutRepository = ShortcutRepository(application)
     val browseContent = MutableLiveData<List<ShortcutGroup>>()
+    private var loadJob: Job? = null
+
+    // The shortcut just opened, to be re-focused once the re-sorted list is published.
+    private var pendingSelection: Shortcut? = null
 
     init {
-        /**
-         * I don't know why the `ViewModel` in google tv samples passed a `Repository` as a parameter
-         */
         loadShortcutGroupList()
     }
 
+    /**
+     * Full (re)load: queries the PackageManager off the main thread, then publishes
+     * the grouped/sorted result. Any in-flight load is cancelled first.
+     */
     fun loadShortcutGroupList() {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            val groups = groupAndSort(shortcutRepository.load())
+            browseContent.value = groups
+        }
+    }
+
+    private fun groupAndSort(shortcuts: Collection<Shortcut>): List<ShortcutGroup> {
         val shortcutGroupByCategory = HashMap<String, ShortcutGroup>()
-        shortcutRepository.load().forEach {
+        shortcuts.forEach {
             val category = it.category
             if (shortcutGroupByCategory.containsKey(category)) {
                 shortcutGroupByCategory[category]!!.add(it)
             } else {
-                val shortcutGroup = ShortcutGroup(category, mutableListOf(it))
-                shortcutGroupByCategory[category] = shortcutGroup
+                shortcutGroupByCategory[category] = ShortcutGroup(category, mutableListOf(it))
             }
         }
-        val shortcutGroupList = shortcutGroupByCategory.values.sortedByDescending { it.openCount }
-        browseContent.postValue(shortcutGroupList)
+        return shortcutGroupByCategory.values.sortedByDescending { it.openCount }
     }
 
     fun incrementOpenCount(shortcut: Shortcut) {
         Log.v(TAG, "${shortcut.id}: ${shortcut.openCount} + 1")
         shortcut.openCount++
-        shortcutRepository.updateOpenCount(shortcut)
-        loadShortcutGroupList()
+        pendingSelection = shortcut
+        // Re-sort from the already-loaded shortcuts; no PackageManager re-scan.
+        val shortcuts = browseContent.value?.flatMap { it.shortcutList } ?: listOf(shortcut)
+        browseContent.value = groupAndSort(shortcuts)
+        // Persist the new count off the main thread.
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { shortcutRepository.updateOpenCount(shortcut) }
+        }
     }
+
+    fun consumePendingSelection(): Shortcut? = pendingSelection?.also { pendingSelection = null }
 
     fun findPosition(shortcut: Shortcut): Pair<Int, Int> {
         val shortcutGroupList = browseContent.value!!
@@ -55,8 +79,10 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun removePackage(packageName: String) {
-        shortcutRepository.deleteById(packageName)
-        loadShortcutGroupList()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { shortcutRepository.deleteById(packageName) }
+            loadShortcutGroupList()
+        }
     }
 
     companion object {
