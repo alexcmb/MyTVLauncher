@@ -5,21 +5,26 @@ import androidx.leanback.widget.ArrayObjectAdapter
 import androidx.leanback.widget.HeaderItem
 import androidx.leanback.widget.ListRow
 import androidx.leanback.widget.ListRowPresenter
+import crazyboyfeng.justTvLauncher.model.MenuAction
+import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.model.ShortcutGroup
-import crazyboyfeng.justTvLauncher.model.UpdateAction
 
 class BrowseAdapter(
     shortcutGroupList: List<ShortcutGroup>,
-    updateRowHeader: String,
-    updateActionTitle: String,
+    menuRowHeader: String,
+    menuActionTitle: String,
+    onShortcutLongClick: (Shortcut) -> Boolean,
 ) : ArrayObjectAdapter(ListRowPresenter()) {
     init {
-        addShortcutGroupList(shortcutGroupList)
-        addUpdateRow(updateRowHeader, updateActionTitle)
+        addShortcutGroupList(shortcutGroupList, onShortcutLongClick)
+        addMenuRow(menuRowHeader, menuActionTitle)
     }
 
-    private fun addShortcutGroupList(shortcutGroupList: List<ShortcutGroup>) {
-        val cardPresenter = ShortcutCardPresenter()
+    private fun addShortcutGroupList(
+        shortcutGroupList: List<ShortcutGroup>,
+        onShortcutLongClick: (Shortcut) -> Boolean,
+    ) {
+        val cardPresenter = ShortcutCardPresenter(onShortcutLongClick)
         shortcutGroupList.forEach {
             Log.v(TAG, "${it.category}: ${it.openCount}")
             val listRowAdapter = ArrayObjectAdapter(cardPresenter)
@@ -29,9 +34,9 @@ class BrowseAdapter(
         }
     }
 
-    private fun addUpdateRow(header: String, actionTitle: String) {
+    private fun addMenuRow(header: String, menuTitle: String) {
         val rowAdapter = ArrayObjectAdapter(ActionCardPresenter())
-        rowAdapter.add(UpdateAction(actionTitle))
+        rowAdapter.add(MenuAction(menuTitle))
         add(ListRow(HeaderItem(header), rowAdapter))
     }
 

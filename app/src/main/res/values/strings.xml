@@ -2,7 +2,16 @@
     <string name="app_name">Just TV Launcher</string>
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
+    <string name="action_menu">Menu</string>
     <string name="action_check_updates">Check for updates</string>
+    <string name="menu_change_category">Change category</string>
+    <string name="menu_hide">Hide from launcher</string>
+    <string name="menu_uninstall">Uninstall</string>
+    <string name="menu_app_info">App info</string>
+    <string name="action_open_failed">Can\'t open</string>
+    <string name="action_hidden_apps">Hidden apps (%1$d)</string>
+    <string name="action_hidden_apps_title">Show a hidden app</string>
+    <string name="no_hidden_apps">No hidden apps</string>
     <string name="update_checking">Checking for updates…</string>
     <string name="update_check_failed">Update check failed</string>
     <string name="update_up_to_date">Already up to date</string>
