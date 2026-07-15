@@ -20,9 +20,16 @@
         android:textSize="20sp"
         android:textStyle="bold" />
 
-    <LinearLayout
-        android:id="@+id/menu_items"
+    <!-- Scrolls when there are more entries than fit: category lists and the hidden
+         apps list are both unbounded. DPAD focus drags the scroll along. -->
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:layout_height="wrap_content">
+
+        <LinearLayout
+            android:id="@+id/menu_items"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
 </LinearLayout>
