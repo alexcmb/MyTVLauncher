@@ -3,6 +3,7 @@
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
     <string name="action_settings">Settings</string>
+    <string name="action_android_settings">Android settings</string>
     <string name="action_check_updates">Check for updates</string>
     <string name="menu_change_category">Change category</string>
     <string name="category_new">New category…</string>

@@ -140,6 +140,9 @@ class BrowseFragment : BrowseSupportFragment() {
     private fun showGlobalMenu() {
         val dialog = MenuDialog(requireContext())
             .setTitle(getString(R.string.action_settings))
+            .addItem(getString(R.string.action_android_settings)) {
+                startAppIntent(Intent(Settings.ACTION_SETTINGS))
+            }
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
