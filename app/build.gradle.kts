@@ -4,10 +4,10 @@ plugins {
 }
 
 android {
-    namespace = "crazyboyfeng.justTvLauncher"
+    namespace = "alexcmb.mytvlauncher"
     compileSdk = 35
     defaultConfig {
-        applicationId = "crazyboyfeng.justTvLauncher"
+        applicationId = "alexcmb.mytvlauncher"
         minSdk = 21
         targetSdk = 35
         // Overridable from CI so each tag produces an increasing version
