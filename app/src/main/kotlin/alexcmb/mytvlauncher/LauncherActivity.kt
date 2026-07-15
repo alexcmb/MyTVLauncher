@@ -14,9 +14,15 @@ class LauncherActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_launcher)
-        // A launcher is the home screen: Back must not leave it.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {}
+            override fun handleOnBackPressed() {
+                // Back is how Leanback leaves a page for the nav on the left, and this
+                // callback runs before the fragment manager's — so pop first, and only
+                // swallow at the root, where a launcher must not be dismissible.
+                if (supportFragmentManager.backStackEntryCount > 0) {
+                    supportFragmentManager.popBackStack()
+                }
+            }
         })
     }
 

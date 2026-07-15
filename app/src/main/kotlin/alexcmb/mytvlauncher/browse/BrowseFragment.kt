@@ -61,7 +61,7 @@ class BrowseFragment : BrowseSupportFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         headersState = HEADERS_ENABLED
-        isHeadersTransitionOnBackEnabled = false
+        // Left at the default (true): it is what lets Back walk out of a page.
         // Activity-scoped: the apps page drives it, this shell reads it for the menu.
         val factory =
             ViewModelProvider.AndroidViewModelFactory.getInstance(requireActivity().application)
