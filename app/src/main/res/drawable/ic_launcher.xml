@@ -1,10 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A CRT television showing "MY": rabbit-ear antenna, casing, glowing screen,
+     tuning knobs and feet. Screen picks up the app accent colour. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:tint="#0099cc"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Rabbit-ear antenna, behind the casing -->
     <path
-        android:fillColor="#ffffff"
-        android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z" />
+        android:pathData="M54,30 L36,10 M54,30 L72,10"
+        android:strokeColor="#90A4AE"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+
+    <!-- Feet, behind the casing -->
+    <path
+        android:fillColor="#37474F"
+        android:pathData="M26,86 L38,86 L38,97 L26,97 Z" />
+    <path
+        android:fillColor="#37474F"
+        android:pathData="M70,86 L82,86 L82,97 L70,97 Z" />
+
+    <!-- Casing -->
+    <path
+        android:fillColor="#546E7A"
+        android:pathData="M18,28 L90,28 A10,10 0 0 1 100,38 L100,80 A10,10 0 0 1 90,90 L18,90 A10,10 0 0 1 8,80 L8,38 A10,10 0 0 1 18,28 Z" />
+
+    <!-- Screen -->
+    <path
+        android:fillColor="#3D5AFE"
+        android:pathData="M22,36 L70,36 A6,6 0 0 1 76,42 L76,76 A6,6 0 0 1 70,82 L22,82 A6,6 0 0 1 16,76 L16,42 A6,6 0 0 1 22,36 Z" />
+
+    <!-- Tuning knobs -->
+    <path
+        android:fillColor="#90A4AE"
+        android:pathData="M83,48 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0 Z" />
+    <path
+        android:fillColor="#90A4AE"
+        android:pathData="M83,64 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0 Z" />
+
+    <!-- "MY" on the screen -->
+    <path
+        android:pathData="M24,71 L24,47 L34,59 L44,47 L44,71 M50,47 L59,59 L68,47 M59,59 L59,71"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>
