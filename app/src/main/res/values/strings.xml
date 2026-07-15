@@ -3,6 +3,10 @@
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
     <string name="title_widgets">Widgets</string>
+    <string name="title_all">All</string>
+    <string name="home_opens_top">Opened %1$d times · your most used</string>
+    <string name="home_opens_ranked">Opened %1$d times · #%2$d here</string>
+    <string name="home_never_opened">Never opened</string>
     <string name="widget_empty_hint">No widgets yet — add one from Settings.</string>
     <string name="action_settings">Settings</string>
     <string name="action_android_settings">Android settings</string>

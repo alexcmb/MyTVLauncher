@@ -1,44 +1,26 @@
 package alexcmb.mytvlauncher.compose
 
+import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.browse.BrowseViewModel
-import alexcmb.mytvlauncher.model.Shortcut
-import alexcmb.mytvlauncher.model.ShortcutGroup
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
-import androidx.tv.material3.Card
-import androidx.tv.material3.CardDefaults
-import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * A spike: the apps grid rebuilt in Compose for TV, to judge the look and — more to the
- * point — whether it stays fluid on the real TV before the whole UI is ported to it.
- * The Leanback launcher is untouched; this opens from Settings.
+ * The Compose home screen, still behind Settings → "Preview new UI" while the menus and
+ * the widgets page are ported. The Leanback launcher is untouched until then.
  */
 class ComposePreviewActivity : ComponentActivity() {
 
@@ -47,8 +29,9 @@ class ComposePreviewActivity : ComponentActivity() {
         val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
         val viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         setContent {
-            val groups = viewModel.browseContent.observeAsState(emptyList())
-            AppsScreen(groups.value) { shortcut -> launch(shortcut.id) }
+            val groups by viewModel.browseContent.observeAsState(emptyList())
+            val tabs = HomeTabs.from(groups, stringResource(R.string.title_all))
+            HomeScreen(tabs = tabs, clock = rememberClock()) { shortcut -> launch(shortcut.id) }
         }
     }
 
@@ -60,69 +43,24 @@ class ComposePreviewActivity : ComponentActivity() {
     }
 }
 
+/** Re-aligns on the whole second so the clock doesn't drift. */
 @Composable
-private fun AppsScreen(groups: List<ShortcutGroup>, onClick: (Shortcut) -> Unit) {
-    MaterialTheme {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF101014)),
-            contentPadding = PaddingValues(vertical = 32.dp),
-        ) {
-            items(groups) { group ->
-                Text(
-                    text = group.category,
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    modifier = Modifier.padding(start = 48.dp, top = 16.dp, bottom = 12.dp),
-                )
-                LazyRow(contentPadding = PaddingValues(horizontal = 48.dp)) {
-                    items(group.shortcutList) { shortcut ->
-                        AppCard(shortcut, onClick)
-                    }
-                }
-            }
+private fun rememberClock(): String {
+    val context = LocalContext.current
+    val format = remember(context) {
+        // Locale-aware, honours the system 12/24h setting, and always includes seconds.
+        val skeleton =
+            if (android.text.format.DateFormat.is24HourFormat(context)) "Hms" else "hms"
+        SimpleDateFormat(
+            android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton),
+            Locale.getDefault(),
+        )
+    }
+    val time by produceState(initialValue = format.format(Date())) {
+        while (true) {
+            delay(1000 - System.currentTimeMillis() % 1000)
+            value = format.format(Date())
         }
     }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun AppCard(shortcut: Shortcut, onClick: (Shortcut) -> Unit) {
-    Card(
-        onClick = { onClick(shortcut) },
-        modifier = Modifier.padding(end = 16.dp),
-        scale = CardDefaults.scale(focusedScale = 1.1f),
-    ) {
-        Box(
-            modifier = Modifier.size(width = 240.dp, height = 135.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            val artwork = shortcut.banner ?: shortcut.icon
-            if (artwork != null) {
-                DrawableImage(artwork, shortcut.banner != null)
-            }
-            if (shortcut.banner == null) {
-                Text(
-                    text = shortcut.title,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(8.dp),
-                )
-            }
-        }
-    }
-}
-
-/** App icons arrive as Drawables from the PackageManager, not as Compose painters. */
-@Composable
-private fun DrawableImage(drawable: Drawable, fills: Boolean) {
-    Image(
-        bitmap = drawable.toBitmap().asImageBitmap(),
-        contentDescription = null,
-        contentScale = if (fills) ContentScale.Crop else ContentScale.Fit,
-        modifier = if (fills) Modifier.fillMaxSize() else Modifier.size(72.dp),
-    )
+    return time
 }
