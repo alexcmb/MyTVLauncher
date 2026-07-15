@@ -179,11 +179,12 @@ class BrowseFragment : BrowseSupportFragment() {
     }
 
     private fun showCategoryPicker(shortcut: Shortcut) {
-        val categories = (viewModel.availableCategories() +
-                getString(R.string.title_apps) + getString(R.string.title_system))
-            .distinct()
-            .filter { it != shortcut.category }
-        if (categories.isEmpty()) return
+        val categories = CategoryOptions.candidates(
+            current = shortcut.category,
+            existing = viewModel.availableCategories(),
+            defaults = listOf(getString(R.string.title_apps), getString(R.string.title_system)),
+            presets = resources.getStringArray(R.array.category_presets).toList(),
+        )
         val dialog = MenuDialog(requireContext())
             .setTitle(getString(R.string.menu_change_category))
         categories.forEach { category ->
