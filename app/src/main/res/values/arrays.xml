@@ -1,0 +1,9 @@
+<resources>
+    <!-- Offered when moving an app, so a new category rarely needs the on-screen keyboard. -->
+    <string-array name="category_presets">
+        <item>Streaming</item>
+        <item>Games</item>
+        <item>Music</item>
+        <item>Utilities</item>
+    </string-array>
+</resources>

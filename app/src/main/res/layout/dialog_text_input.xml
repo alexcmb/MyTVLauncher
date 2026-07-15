@@ -8,28 +8,32 @@
     android:padding="24dp">
 
     <TextView
-        android:id="@+id/menu_title"
+        android:id="@+id/input_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingLeft="20dp"
         android:paddingRight="20dp"
         android:paddingBottom="12dp"
-        android:ellipsize="end"
-        android:maxLines="1"
         android:textColor="#FFFFFF"
         android:textSize="20sp"
         android:textStyle="bold" />
 
-    <!-- Scrolls when there are more entries than fit: category lists and the hidden
-         apps list are both unbounded. DPAD focus drags the scroll along. -->
-    <ScrollView
+    <EditText
+        android:id="@+id/input_field"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-
-        <LinearLayout
-            android:id="@+id/menu_items"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="20dp"
+        android:layout_marginRight="20dp"
+        android:background="@drawable/text_input_background"
+        android:hint="@string/category_hint"
+        android:imeOptions="actionDone"
+        android:inputType="textCapWords"
+        android:maxLines="1"
+        android:paddingLeft="16dp"
+        android:paddingTop="14dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="14dp"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#80FFFFFF"
+        android:textSize="18sp" />
 </LinearLayout>
