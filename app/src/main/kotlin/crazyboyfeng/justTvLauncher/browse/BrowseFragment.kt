@@ -12,25 +12,34 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.leanback.app.BrowseSupportFragment
 import androidx.leanback.widget.ListRowPresenter
+import androidx.leanback.widget.SearchOrbView
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import crazyboyfeng.justTvLauncher.R
-import crazyboyfeng.justTvLauncher.model.MenuAction
 import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.update.UpdateManager
 import kotlinx.coroutines.launch
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.*
 
 
 class BrowseFragment : BrowseSupportFragment() {
     private val handler = Handler(Looper.getMainLooper())
-    private val dateFormat = DateFormat.getTimeInstance()
+    private val timeFormat: DateFormat by lazy {
+        // Locale-aware, honours the system 12/24h setting, and always includes seconds.
+        val skeleton =
+            if (android.text.format.DateFormat.is24HourFormat(requireContext())) "Hms" else "hms"
+        val pattern =
+            android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton)
+        SimpleDateFormat(pattern, Locale.getDefault())
+    }
     private val updateManager by lazy { UpdateManager(requireContext().applicationContext) }
     private lateinit var viewModel: BrowseViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,21 +51,27 @@ class BrowseFragment : BrowseSupportFragment() {
         viewModel.browseContent.observe(this) {
             adapter = BrowseAdapter(
                 it!!,
-                getString(R.string.app_name),
-                getString(R.string.action_menu),
                 onShortcutLongClick = { shortcut -> showContextMenu(shortcut); true }
             )
             // Re-focus the just-opened shortcut at its new, re-sorted position.
             viewModel.consumePendingSelection()?.let(::setSelect)
         }
         setOnItemViewClickedListener { _, item, _, _ ->
-            when (item) {
-                is Shortcut -> {
-                    launch(item.id)
-                    viewModel.incrementOpenCount(item)
-                }
-                is MenuAction -> showGlobalMenu()
+            if (item is Shortcut) {
+                launch(item.id)
+                viewModel.incrementOpenCount(item)
             }
+        }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        // Repurpose the Leanback title orb as the settings button.
+        setOnSearchClickedListener { showGlobalMenu() }
+        searchAffordanceColor = ContextCompat.getColor(requireContext(), R.color.menu_accent)
+        (titleViewAdapter?.searchAffordanceView as? SearchOrbView)?.apply {
+            setOrbIcon(ContextCompat.getDrawable(context, R.drawable.ic_settings))
+            contentDescription = getString(R.string.action_settings)
         }
     }
 
@@ -103,8 +118,12 @@ class BrowseFragment : BrowseSupportFragment() {
         Toast.makeText(requireContext(), resId, Toast.LENGTH_SHORT).show()
     }
 
-    private fun setTick() = handler.post {
-        title = dateFormat.format(Date())
+    /** Ticks the clock every second, re-aligning on the whole second so it doesn't drift. */
+    private val tickRunnable = object : Runnable {
+        override fun run() {
+            title = timeFormat.format(Date())
+            handler.postDelayed(this, 1000 - System.currentTimeMillis() % 1000)
+        }
     }
 
     private fun launch(packageName: String) {
@@ -120,7 +139,7 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun showGlobalMenu() {
         val dialog = MenuDialog(requireContext())
-            .setTitle(getString(R.string.action_menu))
+            .setTitle(getString(R.string.action_settings))
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
@@ -195,34 +214,17 @@ class BrowseFragment : BrowseSupportFragment() {
 
     override fun onStart() {
         super.onStart()
-        val context = requireContext()
+        handler.post(tickRunnable)
         ContextCompat.registerReceiver(
-            context, timeTickReceiver, timeTickReceiver.getIntentFilter(),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-        ContextCompat.registerReceiver(
-            context, packageChangedReceiver, packageChangedReceiver.getIntentFilter(),
+            requireContext(), packageChangedReceiver, packageChangedReceiver.getIntentFilter(),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
 
     override fun onStop() {
         super.onStop()
-        val context = requireContext()
-        context.unregisterReceiver(timeTickReceiver)
-        context.unregisterReceiver(packageChangedReceiver)
-    }
-
-    private val timeTickReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent) {
-            if (Intent.ACTION_TIME_TICK == intent.action) {
-                setTick()
-            }
-        }
-
-        fun getIntentFilter(): IntentFilter {
-            return IntentFilter(Intent.ACTION_TIME_TICK)
-        }
+        handler.removeCallbacks(tickRunnable)
+        requireContext().unregisterReceiver(packageChangedReceiver)
     }
 
     private val packageChangedReceiver = object : BroadcastReceiver() {

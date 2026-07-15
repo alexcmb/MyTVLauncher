@@ -2,7 +2,7 @@
     <string name="app_name">Just TV Launcher</string>
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
-    <string name="action_menu">Menu</string>
+    <string name="action_settings">Settings</string>
     <string name="action_check_updates">Check for updates</string>
     <string name="menu_change_category">Change category</string>
     <string name="menu_hide">Hide from launcher</string>
