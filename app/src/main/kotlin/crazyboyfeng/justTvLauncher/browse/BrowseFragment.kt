@@ -190,7 +190,15 @@ class BrowseFragment : BrowseSupportFragment() {
         categories.forEach { category ->
             dialog.addItem(category) { viewModel.setCategory(shortcut, category) }
         }
+        dialog.addItem(getString(R.string.category_new)) { promptNewCategory(shortcut) }
         dialog.show()
+    }
+
+    private fun promptNewCategory(shortcut: Shortcut) {
+        TextInputDialog(requireContext())
+            .setTitle(getString(R.string.category_new_title))
+            .onSubmit { name -> viewModel.setCategory(shortcut, name) }
+            .show()
     }
 
     private fun packageUri(shortcut: Shortcut): Uri =
