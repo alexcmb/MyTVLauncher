@@ -3,9 +3,11 @@ package alexcmb.mytvlauncher.widget
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.repository.WidgetRepository
 import android.app.Activity
+import android.app.AlertDialog
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
 import android.view.View
@@ -16,11 +18,11 @@ import androidx.annotation.StringRes
 /**
  * Hosts a single app widget in a fixed slot.
  *
- * Android TV is hostile territory for widgets: it ships no widget picker, so the
- * provider list is built here, and a normal app can never hold BIND_APPWIDGET, so
- * binding falls back to the system consent dialog — which not every device has.
- * Every one of those steps is therefore guarded, and every failure is reported to
- * the user rather than leaving an empty slot with no explanation.
+ * Binding is the hard part. BIND_APPWIDGET is signature|privileged, so no third-party
+ * launcher can hold it; the usual escape hatch is a consent screen in Settings that
+ * white-lists the caller, and the Android TV build of Settings doesn't ship it. So
+ * binding is attempted every way the platform offers, and if none is available the
+ * user is told about the one-time adb grant that TV launchers rely on.
  */
 class WidgetSlotController(
     private val activity: Activity,
@@ -62,12 +64,19 @@ class WidgetSlotController(
         val id = host.allocateAppWidgetId()
         pendingId = id
         if (appWidgetManager.bindAppWidgetIdIfAllowed(id, provider.provider)) {
-            Log.i(TAG, "Bound widget $id without asking")
+            Log.i(TAG, "Bound widget $id directly")
             configureOrShow(id)
-        } else {
-            Log.i(TAG, "Not allowed to bind widget $id; asking the user")
-            requestBindPermission(id, provider)
+            return
         }
+        // Not white-listed. Ask the system to ask the user (phone-style Settings).
+        if (start(bindConsentIntent(id, provider), REQUEST_BIND)) return
+        // No consent screen. Let the system picker bind on our behalf, if it has one.
+        if (start(systemPickerIntent(id), REQUEST_PICK)) return
+        // Out of options: the permission can only come from adb now.
+        Log.w(TAG, "No way to bind widget $id on this device")
+        host.deleteAppWidgetId(id)
+        pendingId = WidgetRepository.NO_WIDGET
+        showPermissionHelp()
     }
 
     fun remove() {
@@ -86,12 +95,46 @@ class WidgetSlotController(
         if (granted) configureOrShow(id) else abandon(id, R.string.widget_bind_refused)
     }
 
+    /** The system picker binds the provider itself, so its id wins over ours. */
+    fun onPickResult(granted: Boolean, pickedId: Int) {
+        val id = if (pickedId != WidgetRepository.NO_WIDGET) pickedId else pendingId
+        if (id == WidgetRepository.NO_WIDGET) return
+        if (granted) {
+            pendingId = id
+            configureOrShow(id)
+        } else {
+            abandon(id, R.string.widget_bind_refused)
+        }
+    }
+
     fun onConfigureResult(configured: Boolean) {
         val id = pendingId
         if (id == WidgetRepository.NO_WIDGET) return
         val info = appWidgetManager.getAppWidgetInfo(id)
         if (configured && info != null) show(id, info)
         else abandon(id, R.string.widget_configure_failed)
+    }
+
+    private fun bindConsentIntent(id: Int, provider: AppWidgetProviderInfo) =
+        Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
+        }
+
+    private fun systemPickerIntent(id: Int) =
+        Intent(AppWidgetManager.ACTION_APPWIDGET_PICK).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            // Without these the picker offers to create its own custom entries.
+            putParcelableArrayListExtra(AppWidgetManager.EXTRA_CUSTOM_INFO, ArrayList())
+            putParcelableArrayListExtra(AppWidgetManager.EXTRA_CUSTOM_EXTRAS, ArrayList())
+        }
+
+    private fun start(intent: Intent, requestCode: Int): Boolean = try {
+        activity.startActivityForResult(intent, requestCode)
+        true
+    } catch (e: ActivityNotFoundException) {
+        Log.i(TAG, "No activity for ${intent.action}")
+        false
     }
 
     private fun configureOrShow(id: Int) {
@@ -110,25 +153,10 @@ class WidgetSlotController(
             component = configure
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
         }
-        try {
-            activity.startActivityForResult(intent, REQUEST_CONFIGURE)
-        } catch (e: Exception) {
-            // Some widgets declare a configure activity that isn't reachable here.
-            Log.w(TAG, "Cannot configure $configure; showing unconfigured", e)
+        if (!start(intent, REQUEST_CONFIGURE)) {
+            // Some widgets name a configure activity that isn't reachable here.
+            Log.w(TAG, "Cannot configure $configure; showing unconfigured")
             show(id, info)
-        }
-    }
-
-    private fun requestBindPermission(id: Int, provider: AppWidgetProviderInfo) {
-        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
-        }
-        try {
-            activity.startActivityForResult(intent, REQUEST_BIND)
-        } catch (e: Exception) {
-            Log.w(TAG, "This device has no widget bind dialog", e)
-            abandon(id, R.string.widget_bind_unavailable)
         }
     }
 
@@ -148,6 +176,16 @@ class WidgetSlotController(
         Log.i(TAG, "Showing widget $id (${widthDp}x${heightDp}dp)")
     }
 
+    /** Spells out the adb grant, since the device offers no way to ask on screen. */
+    private fun showPermissionHelp() {
+        val command = "adb shell appwidget grantbind --package ${activity.packageName}"
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.widget_permission_title)
+            .setMessage(activity.getString(R.string.widget_permission_message, command))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
     private fun abandon(id: Int, @StringRes message: Int) {
         host.deleteAppWidgetId(id)
         pendingId = WidgetRepository.NO_WIDGET
@@ -159,5 +197,6 @@ class WidgetSlotController(
         private const val HOST_ID = 1024
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002
+        const val REQUEST_PICK = 1003
     }
 }

@@ -1,6 +1,7 @@
 package alexcmb.mytvlauncher
 
 import alexcmb.mytvlauncher.widget.WidgetSlotController
+import android.appwidget.AppWidgetManager
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
@@ -36,12 +37,17 @@ class LauncherActivity : FragmentActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        // Only the outcome is read: the widget id comes from the controller, since the
-        // bind dialog may return OK with no data.
         val granted = resultCode == RESULT_OK
         when (requestCode) {
+            // Only the outcome is read: the widget id comes from the controller, since
+            // the bind dialog may return OK with no data.
             WidgetSlotController.REQUEST_BIND -> widgetSlot.onBindResult(granted)
             WidgetSlotController.REQUEST_CONFIGURE -> widgetSlot.onConfigureResult(granted)
+            // The system picker allocates and binds its own id, so that one does matter.
+            WidgetSlotController.REQUEST_PICK -> widgetSlot.onPickResult(
+                granted,
+                data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
+            )
         }
     }
 }
