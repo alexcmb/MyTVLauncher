@@ -1,4 +1,4 @@
-# Just TV Launcher
+# My TV Launcher
 Simple Leanback style TV launcher.
 
 * No ads.
