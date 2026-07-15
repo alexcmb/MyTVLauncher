@@ -4,6 +4,7 @@ import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.update.UpdateManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -13,6 +14,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,18 +26,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * The Compose home screen, still behind Settings → "Preview new UI" while the settings
- * menu and the widgets page are ported. The Leanback launcher is untouched until then.
+ * The Compose home screen, still behind Settings → "Preview new UI" while the widgets page
+ * is ported. The Leanback launcher is untouched until then.
+ *
+ * The overlay state lives on the activity rather than inside the composition so the flows
+ * that drive it — an update check, an intent that may not resolve — read as plain code.
  */
 class ComposePreviewActivity : ComponentActivity() {
 
     private lateinit var viewModel: BrowseViewModel
+    private val updateManager by lazy { UpdateManager(applicationContext) }
+
+    private var menu by mutableStateOf<MenuSpec?>(null)
+    private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,104 +55,168 @@ class ComposePreviewActivity : ComponentActivity() {
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(groups, stringResource(R.string.title_all))
-            // Nesting a menu is just swapping the spec; null means nothing is open.
-            var menu by remember { mutableStateOf<MenuSpec?>(null) }
-            var renaming by remember { mutableStateOf<Shortcut?>(null) }
-
             Box {
                 HomeScreen(
                     tabs = tabs,
                     clock = rememberClock(),
-                    onLaunch = { launch(it.id) },
-                    onLongPress = { shortcut ->
-                        menu = appMenu(
-                            shortcut = shortcut,
-                            onClose = { menu = null },
-                            onChangeCategory = {
-                                menu = categoryMenu(
-                                    shortcut = shortcut,
-                                    onClose = { menu = null },
-                                    onNew = {
-                                        menu = null
-                                        renaming = shortcut
-                                    },
-                                )
-                            },
-                        )
-                    },
+                    onLaunch = ::launchShortcut,
+                    onLongPress = ::showAppMenu,
+                    onSettings = ::showSettingsMenu,
                 )
                 menu?.let { TvMenu(it) { menu = null } }
-                renaming?.let { shortcut ->
+                namingCategoryFor?.let { shortcut ->
                     TvTextPrompt(
                         title = stringResource(R.string.category_new_title),
                         hint = stringResource(R.string.category_hint),
                         onSubmit = { viewModel.setCategory(shortcut, it) },
-                        onDismiss = { renaming = null },
+                        onDismiss = { namingCategoryFor = null },
                     )
                 }
             }
         }
     }
 
-    private fun appMenu(
-        shortcut: Shortcut,
-        onClose: () -> Unit,
-        onChangeCategory: () -> Unit,
-    ) = MenuSpec(
-        title = shortcut.title,
-        items = listOf(
-            MenuItem(getString(R.string.menu_change_category)) { onChangeCategory() },
-            MenuItem(getString(R.string.menu_hide)) {
-                onClose()
-                viewModel.hideApp(shortcut)
-            },
-            MenuItem(getString(R.string.menu_uninstall)) {
-                onClose()
-                startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
-            },
-            MenuItem(getString(R.string.menu_app_info)) {
-                onClose()
-                startAppIntent(
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
-                )
-            },
-        ),
-    )
+    private fun showAppMenu(shortcut: Shortcut) {
+        menu = MenuSpec(
+            title = shortcut.title,
+            items = listOf(
+                MenuItem(getString(R.string.menu_change_category)) {
+                    showCategoryMenu(shortcut)
+                },
+                MenuItem(getString(R.string.menu_hide)) {
+                    menu = null
+                    viewModel.hideApp(shortcut)
+                },
+                MenuItem(getString(R.string.menu_uninstall)) {
+                    menu = null
+                    startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
+                },
+                MenuItem(getString(R.string.menu_app_info)) {
+                    menu = null
+                    startAppIntent(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
+                    )
+                },
+            ),
+        )
+    }
 
-    private fun categoryMenu(shortcut: Shortcut, onClose: () -> Unit, onNew: () -> Unit): MenuSpec {
+    private fun showCategoryMenu(shortcut: Shortcut) {
         val categories = CategoryOptions.candidates(
             current = shortcut.category,
             existing = viewModel.availableCategories(),
             defaults = listOf(getString(R.string.title_apps), getString(R.string.title_system)),
             presets = resources.getStringArray(R.array.category_presets).toList(),
         )
-        return MenuSpec(
+        menu = MenuSpec(
             title = getString(R.string.menu_change_category),
             items = categories.map { category ->
                 MenuItem(category) {
-                    onClose()
+                    menu = null
                     viewModel.setCategory(shortcut, category)
                 }
-            } + MenuItem(getString(R.string.category_new)) { onNew() },
+            } + MenuItem(getString(R.string.category_new)) {
+                menu = null
+                namingCategoryFor = shortcut
+            },
         )
+    }
+
+    private fun showSettingsMenu() {
+        val items = mutableListOf(
+            MenuItem(getString(R.string.action_android_settings)) {
+                menu = null
+                startAppIntent(Intent(Settings.ACTION_SETTINGS))
+            },
+            MenuItem(getString(R.string.action_check_updates)) {
+                menu = null
+                checkForUpdates()
+            },
+        )
+        val hidden = viewModel.hiddenApps
+        if (hidden.isNotEmpty()) {
+            items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
+                showHiddenAppsMenu()
+            }
+        }
+        menu = MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    private fun showHiddenAppsMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_hidden_apps_title),
+            items = viewModel.hiddenApps.map { app ->
+                MenuItem(app.title) {
+                    menu = null
+                    viewModel.showApp(app)
+                }
+            },
+        )
+    }
+
+    private fun checkForUpdates() {
+        toast(R.string.update_checking)
+        lifecycleScope.launch {
+            val release = updateManager.fetchLatestRelease()
+            when {
+                release == null -> toast(R.string.update_check_failed)
+                release.versionCode <= updateManager.currentVersionCode() ->
+                    toast(R.string.update_up_to_date)
+                else -> menu = MenuSpec(
+                    title = getString(R.string.update_available_title, release.versionName),
+                    items = listOf(
+                        MenuItem(getString(R.string.update_install)) {
+                            menu = null
+                            downloadAndInstall(release)
+                        },
+                        MenuItem(getString(android.R.string.cancel)) { menu = null },
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun downloadAndInstall(release: UpdateManager.Release) {
+        toast(R.string.update_downloading)
+        lifecycleScope.launch {
+            val file = try {
+                updateManager.download(release)
+            } catch (e: Exception) {
+                Log.w(TAG, "Update download failed", e)
+                null
+            }
+            if (file == null) toast(R.string.update_download_failed) else updateManager.install(file)
+        }
     }
 
     private fun packageUri(shortcut: Shortcut): Uri = Uri.fromParts("package", shortcut.id, null)
 
-    private fun launch(packageName: String) {
-        val intent = packageManager.getLeanbackLaunchIntentForPackage(packageName)
-            ?: packageManager.getLaunchIntentForPackage(packageName)
-            ?: return
+    private fun launchShortcut(shortcut: Shortcut) {
+        val intent = packageManager.getLeanbackLaunchIntentForPackage(shortcut.id)
+            ?: packageManager.getLaunchIntentForPackage(shortcut.id)
+        if (intent == null) {
+            Log.w(TAG, "No launch intent for ${shortcut.id}")
+            return
+        }
         startActivity(intent)
+        viewModel.incrementOpenCount(shortcut)
     }
 
     private fun startAppIntent(intent: Intent) {
         try {
             startActivity(intent)
         } catch (e: ActivityNotFoundException) {
-            Log.w("ComposePreview", "No activity for $intent", e)
-            Toast.makeText(this, R.string.action_open_failed, Toast.LENGTH_SHORT).show()
+            Log.w(TAG, "No activity for $intent", e)
+            toast(R.string.action_open_failed)
         }
+    }
+
+    private fun toast(@StringRes resId: Int) {
+        Toast.makeText(this, resId, Toast.LENGTH_SHORT).show()
+    }
+
+    private companion object {
+        const val TAG = "ComposePreview"
     }
 }
 

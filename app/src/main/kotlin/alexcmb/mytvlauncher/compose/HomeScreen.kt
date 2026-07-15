@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +59,7 @@ fun HomeScreen(
     clock: String,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onSettings: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var focused by remember { mutableStateOf<Shortcut?>(null) }
@@ -66,7 +69,13 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().background(Background)) {
             AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
-                TopBar(tabs, selectedTab, clock) { selectedTab = it; focused = null }
+                TopBar(
+                    tabs = tabs,
+                    selected = selectedTab,
+                    clock = clock,
+                    onSettings = onSettings,
+                    onSelect = { selectedTab = it; focused = null },
+                )
                 Hero(focused, tab?.shortcuts.orEmpty())
                 if (tab != null) {
                     LazyVerticalGrid(
@@ -106,7 +115,13 @@ private fun AmbientBackdrop(focused: Shortcut?) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun TopBar(tabs: List<HomeTab>, selected: Int, clock: String, onSelect: (Int) -> Unit) {
+private fun TopBar(
+    tabs: List<HomeTab>,
+    selected: Int,
+    clock: String,
+    onSettings: () -> Unit,
+    onSelect: (Int) -> Unit,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -127,10 +142,24 @@ private fun TopBar(tabs: List<HomeTab>, selected: Int, clock: String, onSelect: 
                 }
             }
         }
+        SettingsOrb(onSettings)
+    }
+}
+
+@Composable
+private fun SettingsOrb(onSettings: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .clickable { onSettings() }
+            .background(if (focused) Accent else Color.Transparent, CircleShape)
+            .padding(8.dp),
+    ) {
         Icon(
             painter = painterResource(R.drawable.ic_settings),
             contentDescription = stringResource(R.string.action_settings),
-            tint = Muted,
+            tint = if (focused) Color.White else Muted,
             modifier = Modifier.size(20.dp),
         )
     }
