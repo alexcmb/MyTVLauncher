@@ -12,15 +12,16 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.leanback.app.BrowseSupportFragment
 import androidx.leanback.widget.ListRowPresenter
+import androidx.leanback.widget.SearchOrbView
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import crazyboyfeng.justTvLauncher.R
-import crazyboyfeng.justTvLauncher.model.MenuAction
 import crazyboyfeng.justTvLauncher.model.Shortcut
 import crazyboyfeng.justTvLauncher.update.UpdateManager
 import kotlinx.coroutines.launch
@@ -50,21 +51,27 @@ class BrowseFragment : BrowseSupportFragment() {
         viewModel.browseContent.observe(this) {
             adapter = BrowseAdapter(
                 it!!,
-                getString(R.string.app_name),
-                getString(R.string.action_menu),
                 onShortcutLongClick = { shortcut -> showContextMenu(shortcut); true }
             )
             // Re-focus the just-opened shortcut at its new, re-sorted position.
             viewModel.consumePendingSelection()?.let(::setSelect)
         }
         setOnItemViewClickedListener { _, item, _, _ ->
-            when (item) {
-                is Shortcut -> {
-                    launch(item.id)
-                    viewModel.incrementOpenCount(item)
-                }
-                is MenuAction -> showGlobalMenu()
+            if (item is Shortcut) {
+                launch(item.id)
+                viewModel.incrementOpenCount(item)
             }
+        }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        // Repurpose the Leanback title orb as the settings button.
+        setOnSearchClickedListener { showGlobalMenu() }
+        searchAffordanceColor = ContextCompat.getColor(requireContext(), R.color.menu_accent)
+        (titleViewAdapter?.searchAffordanceView as? SearchOrbView)?.apply {
+            setOrbIcon(ContextCompat.getDrawable(context, R.drawable.ic_settings))
+            contentDescription = getString(R.string.action_settings)
         }
     }
 
@@ -132,7 +139,7 @@ class BrowseFragment : BrowseSupportFragment() {
 
     private fun showGlobalMenu() {
         val dialog = MenuDialog(requireContext())
-            .setTitle(getString(R.string.action_menu))
+            .setTitle(getString(R.string.action_settings))
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
