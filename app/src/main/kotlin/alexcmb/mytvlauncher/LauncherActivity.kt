@@ -69,7 +69,7 @@ class LauncherActivity : FragmentActivity() {
         super.onStart()
         handler.post(tickRunnable)
         widgetSlot.startListening()
-        widgetSlot.restore()
+        widgetSlot.refresh()
     }
 
     override fun onStop() {

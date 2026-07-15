@@ -123,10 +123,9 @@ class BrowseFragment : BrowseSupportFragment() {
             }
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
         val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
-        if (widgetSlot.hasWidget()) {
-            dialog.addItem(getString(R.string.widget_remove)) { widgetSlot.remove() }
-        } else {
-            dialog.addItem(getString(R.string.widget_add)) { showWidgetPicker() }
+        dialog.addItem(getString(R.string.widget_add)) { showWidgetPicker() }
+        if (widgetSlot.hasWidgets()) {
+            dialog.addItem(getString(R.string.widget_remove)) { showHostedWidgetPicker() }
         }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
@@ -150,6 +149,15 @@ class BrowseFragment : BrowseSupportFragment() {
         providers.forEach { provider ->
             dialog.addItem(provider.loadLabel(packageManager)) { widgetSlot.add(provider) }
         }
+        dialog.show()
+    }
+
+    private fun showHostedWidgetPicker() {
+        val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
+        val hosted = widgetSlot.hostedWidgets()
+        if (hosted.isEmpty()) return
+        val dialog = MenuDialog(requireContext()).setTitle(getString(R.string.widget_remove))
+        hosted.forEach { (id, label) -> dialog.addItem(label) { widgetSlot.remove(id) } }
         dialog.show()
     }
 

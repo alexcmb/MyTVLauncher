@@ -35,12 +35,16 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <!-- Fixed widget band. Gone until a widget is added, so with none the browse
-             fills the screen exactly as it did before. -->
-        <FrameLayout
+        <!-- Fixed widget band: a row of widgets, as tall as the biggest one. Gone until
+             a widget is added, so with none the browse fills the screen as it did. -->
+        <LinearLayout
             android:id="@+id/widget_slot"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/widget_slot_height"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingLeft="48dp"
+            android:paddingRight="48dp"
+            android:paddingBottom="12dp"
             android:visibility="gone" />
 
         <fragment

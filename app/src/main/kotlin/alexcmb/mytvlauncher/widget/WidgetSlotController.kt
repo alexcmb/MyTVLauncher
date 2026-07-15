@@ -11,12 +11,12 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.annotation.StringRes
 
 /**
- * Hosts a single app widget in a fixed slot.
+ * Hosts the launcher's app widgets in a fixed band.
  *
  * Binding is the hard part. BIND_APPWIDGET is signature|privileged, so no third-party
  * launcher can hold it; the usual escape hatch is a consent screen in Settings that
@@ -26,7 +26,7 @@ import androidx.annotation.StringRes
  */
 class WidgetSlotController(
     private val activity: Activity,
-    private val slot: ViewGroup,
+    private val band: LinearLayout,
 ) {
     private val appWidgetManager = AppWidgetManager.getInstance(activity)
     private val host = AppWidgetHost(activity, HOST_ID)
@@ -36,28 +36,37 @@ class WidgetSlotController(
      * The widget being bound/configured. Held here rather than read back from the
      * result Intent: the bind dialog is allowed to return OK with no data at all.
      */
-    private var pendingId = WidgetRepository.NO_WIDGET
+    private var pendingId = NO_WIDGET
 
     fun startListening() = host.startListening()
 
     fun stopListening() = host.stopListening()
 
-    fun hasWidget(): Boolean = repository.queryId() != WidgetRepository.NO_WIDGET
+    fun hasWidgets(): Boolean = repository.query().isNotEmpty()
 
     /** Providers installed on the device; empty on a TV with no phone apps sideloaded. */
     fun availableProviders(): List<AppWidgetProviderInfo> = appWidgetManager.installedProviders
 
-    /** Re-attaches the stored widget, dropping it if its provider went away. */
-    fun restore() {
-        val id = repository.queryId()
-        if (id == WidgetRepository.NO_WIDGET) return
-        val info = appWidgetManager.getAppWidgetInfo(id)
-        if (info == null) {
-            Log.w(TAG, "Provider for widget $id is gone; dropping it")
-            remove()
-            return
+    /** The hosted widgets and their labels, for the manage menus. */
+    fun hostedWidgets(): List<Pair<Int, CharSequence>> = repository.query().mapNotNull { hosted ->
+        val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return@mapNotNull null
+        hosted.id to info.loadLabel(activity.packageManager)
+    }
+
+    /** Rebuilds the band from what's stored, dropping widgets whose provider went away. */
+    fun refresh() {
+        band.removeAllViews()
+        repository.query().forEach { hosted ->
+            val info = appWidgetManager.getAppWidgetInfo(hosted.id)
+            if (info == null) {
+                Log.w(TAG, "Provider for widget ${hosted.id} is gone; dropping it")
+                host.deleteAppWidgetId(hosted.id)
+                repository.remove(hosted.id)
+                return@forEach
+            }
+            band.addView(createView(hosted, info))
         }
-        show(id, info)
+        band.visibility = if (band.childCount > 0) View.VISIBLE else View.GONE
     }
 
     fun add(provider: AppWidgetProviderInfo) {
@@ -75,30 +84,31 @@ class WidgetSlotController(
         // Out of options: the permission can only come from adb now.
         Log.w(TAG, "No way to bind widget $id on this device")
         host.deleteAppWidgetId(id)
-        pendingId = WidgetRepository.NO_WIDGET
+        pendingId = NO_WIDGET
         showPermissionHelp()
     }
 
-    fun remove() {
-        val id = repository.queryId()
-        if (id != WidgetRepository.NO_WIDGET) {
-            host.deleteAppWidgetId(id)
-        }
-        repository.deleteId()
-        slot.removeAllViews()
-        slot.visibility = View.GONE
+    fun remove(id: Int) {
+        host.deleteAppWidgetId(id)
+        repository.remove(id)
+        refresh()
+    }
+
+    fun resize(id: Int, size: WidgetSize) {
+        repository.updateSize(id, size)
+        refresh()
     }
 
     fun onBindResult(granted: Boolean) {
         val id = pendingId
-        if (id == WidgetRepository.NO_WIDGET) return
+        if (id == NO_WIDGET) return
         if (granted) configureOrShow(id) else abandon(id, R.string.widget_bind_refused)
     }
 
     /** The system picker binds the provider itself, so its id wins over ours. */
     fun onPickResult(granted: Boolean, pickedId: Int) {
-        val id = if (pickedId != WidgetRepository.NO_WIDGET) pickedId else pendingId
-        if (id == WidgetRepository.NO_WIDGET) return
+        val id = if (pickedId != NO_WIDGET) pickedId else pendingId
+        if (id == NO_WIDGET) return
         if (granted) {
             pendingId = id
             configureOrShow(id)
@@ -109,10 +119,53 @@ class WidgetSlotController(
 
     fun onConfigureResult(configured: Boolean) {
         val id = pendingId
-        if (id == WidgetRepository.NO_WIDGET) return
-        val info = appWidgetManager.getAppWidgetInfo(id)
-        if (configured && info != null) show(id, info)
+        if (id == NO_WIDGET) return
+        if (configured && appWidgetManager.getAppWidgetInfo(id) != null) keep(id)
         else abandon(id, R.string.widget_configure_failed)
+    }
+
+    private fun createView(hosted: HostedWidget, info: AppWidgetProviderInfo): View {
+        val view = host.createView(activity, hosted.id, info)
+        val density = activity.resources.displayMetrics.density
+        view.layoutParams = LinearLayout.LayoutParams(
+            (hosted.size.widthDp * density).toInt(),
+            (hosted.size.heightDp * density).toInt()
+        ).apply { rightMargin = (WIDGET_GAP_DP * density).toInt() }
+        view.updateAppWidgetSize(
+            null, hosted.size.widthDp, hosted.size.heightDp, hosted.size.widthDp,
+            hosted.size.heightDp
+        )
+        return view
+    }
+
+    private fun configureOrShow(id: Int) {
+        val info = appWidgetManager.getAppWidgetInfo(id)
+        if (info == null) {
+            Log.w(TAG, "Widget $id has no info after binding")
+            abandon(id, R.string.widget_bind_refused)
+            return
+        }
+        val configure = info.configure
+        if (configure == null) {
+            keep(id)
+            return
+        }
+        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
+            component = configure
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+        }
+        if (!start(intent, REQUEST_CONFIGURE)) {
+            // Some widgets name a configure activity that isn't reachable here.
+            Log.w(TAG, "Cannot configure $configure; keeping it unconfigured")
+            keep(id)
+        }
+    }
+
+    private fun keep(id: Int) {
+        repository.add(HostedWidget(id, WidgetSize.MEDIUM))
+        pendingId = NO_WIDGET
+        refresh()
+        Log.i(TAG, "Hosting widget $id")
     }
 
     private fun bindConsentIntent(id: Int, provider: AppWidgetProviderInfo) =
@@ -137,45 +190,6 @@ class WidgetSlotController(
         false
     }
 
-    private fun configureOrShow(id: Int) {
-        val info = appWidgetManager.getAppWidgetInfo(id)
-        if (info == null) {
-            Log.w(TAG, "Widget $id has no info after binding")
-            abandon(id, R.string.widget_bind_refused)
-            return
-        }
-        val configure = info.configure
-        if (configure == null) {
-            show(id, info)
-            return
-        }
-        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
-            component = configure
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-        }
-        if (!start(intent, REQUEST_CONFIGURE)) {
-            // Some widgets name a configure activity that isn't reachable here.
-            Log.w(TAG, "Cannot configure $configure; showing unconfigured")
-            show(id, info)
-        }
-    }
-
-    private fun show(id: Int, info: AppWidgetProviderInfo) {
-        val view = host.createView(activity, id, info)
-        val metrics = activity.resources.displayMetrics
-        val heightDp =
-            (activity.resources.getDimensionPixelSize(R.dimen.widget_slot_height) / metrics.density)
-                .toInt()
-        val widthDp = (metrics.widthPixels / metrics.density).toInt()
-        view.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
-        slot.removeAllViews()
-        slot.addView(view)
-        slot.visibility = View.VISIBLE
-        repository.updateId(id)
-        pendingId = WidgetRepository.NO_WIDGET
-        Log.i(TAG, "Showing widget $id (${widthDp}x${heightDp}dp)")
-    }
-
     /** Spells out the adb grant, since the device offers no way to ask on screen. */
     private fun showPermissionHelp() {
         val command = "adb shell appwidget grantbind --package ${activity.packageName}"
@@ -188,13 +202,15 @@ class WidgetSlotController(
 
     private fun abandon(id: Int, @StringRes message: Int) {
         host.deleteAppWidgetId(id)
-        pendingId = WidgetRepository.NO_WIDGET
+        pendingId = NO_WIDGET
         Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
     }
 
     companion object {
         private const val TAG = "WidgetSlotController"
         private const val HOST_ID = 1024
+        private const val NO_WIDGET = -1
+        private const val WIDGET_GAP_DP = 16
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002
         const val REQUEST_PICK = 1003
