@@ -24,6 +24,7 @@ import alexcmb.mytvlauncher.LauncherActivity
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.widget.WidgetSize
 import kotlinx.coroutines.launch
 
 
@@ -125,7 +126,12 @@ class BrowseFragment : BrowseSupportFragment() {
         val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
         dialog.addItem(getString(R.string.widget_add)) { showWidgetPicker() }
         if (widgetSlot.hasWidgets()) {
-            dialog.addItem(getString(R.string.widget_remove)) { showHostedWidgetPicker() }
+            dialog.addItem(getString(R.string.widget_resize)) {
+                pickHostedWidget(R.string.widget_resize, ::showSizePicker)
+            }
+            dialog.addItem(getString(R.string.widget_remove)) {
+                pickHostedWidget(R.string.widget_remove, widgetSlot::remove)
+            }
         }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
@@ -152,13 +158,34 @@ class BrowseFragment : BrowseSupportFragment() {
         dialog.show()
     }
 
-    private fun showHostedWidgetPicker() {
+    /** Asks which hosted widget to act on, skipping the question when there's only one. */
+    private fun pickHostedWidget(@StringRes title: Int, action: (Int) -> Unit) {
+        val hosted = (requireActivity() as LauncherActivity).widgetSlot.hostedWidgets()
+        when (hosted.size) {
+            0 -> return
+            1 -> action(hosted.first().first)
+            else -> {
+                val dialog = MenuDialog(requireContext()).setTitle(getString(title))
+                hosted.forEach { (id, label) -> dialog.addItem(label) { action(id) } }
+                dialog.show()
+            }
+        }
+    }
+
+    private fun showSizePicker(id: Int) {
         val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
-        val hosted = widgetSlot.hostedWidgets()
-        if (hosted.isEmpty()) return
-        val dialog = MenuDialog(requireContext()).setTitle(getString(R.string.widget_remove))
-        hosted.forEach { (id, label) -> dialog.addItem(label) { widgetSlot.remove(id) } }
-        dialog.show()
+        MenuDialog(requireContext())
+            .setTitle(getString(R.string.widget_resize))
+            .addItem(getString(R.string.widget_size_small)) {
+                widgetSlot.resize(id, WidgetSize.SMALL)
+            }
+            .addItem(getString(R.string.widget_size_medium)) {
+                widgetSlot.resize(id, WidgetSize.MEDIUM)
+            }
+            .addItem(getString(R.string.widget_size_large)) {
+                widgetSlot.resize(id, WidgetSize.LARGE)
+            }
+            .show()
     }
 
     private fun showContextMenu(shortcut: Shortcut) {

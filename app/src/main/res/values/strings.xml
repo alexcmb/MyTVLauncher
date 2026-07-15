@@ -7,6 +7,10 @@
     <string name="action_check_updates">Check for updates</string>
     <string name="widget_add">Add widget</string>
     <string name="widget_remove">Remove widget</string>
+    <string name="widget_resize">Resize widget</string>
+    <string name="widget_size_small">Small</string>
+    <string name="widget_size_medium">Medium</string>
+    <string name="widget_size_large">Large</string>
     <string name="widget_none_available">No widgets available on this device</string>
     <string name="widget_bind_refused">Widget was not allowed</string>
     <string name="widget_configure_failed">Widget setup was cancelled</string>
