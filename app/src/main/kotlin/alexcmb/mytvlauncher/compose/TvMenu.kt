@@ -25,6 +25,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -48,8 +51,21 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
     val firstRow = remember { FocusRequester() }
     LaunchedEffect(spec) { firstRow.requestFocus() }
 
+    // A long press opens this menu, but the key-up that ends that press is still to come:
+    // it would land on the row that just took focus and fire it. Waiting a fixed delay
+    // wouldn't do — the user releases whenever they like — so swallow input until the key
+    // is actually released. Preview events reach us before the focused row.
+    var armed by remember { mutableStateOf(false) }
+
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (armed) return@onPreviewKeyEvent false
+                if (event.type == KeyEventType.KeyUp) armed = true
+                true
+            }
+            .background(Color.Black.copy(alpha = 0.6f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
