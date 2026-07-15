@@ -64,18 +64,8 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun groupAndSort(shortcuts: Collection<Shortcut>): List<ShortcutGroup> {
-        val shortcutGroupByCategory = HashMap<String, ShortcutGroup>()
-        shortcuts.forEach {
-            val category = it.category
-            if (shortcutGroupByCategory.containsKey(category)) {
-                shortcutGroupByCategory[category]!!.add(it)
-            } else {
-                shortcutGroupByCategory[category] = ShortcutGroup(category, mutableListOf(it))
-            }
-        }
-        return shortcutGroupByCategory.values.sortedByDescending { it.openCount }
-    }
+    private fun groupAndSort(shortcuts: Collection<Shortcut>): List<ShortcutGroup> =
+        ShortcutGrouping.groupAndSort(shortcuts)
 
     fun incrementOpenCount(shortcut: Shortcut) {
         Log.v(TAG, "${shortcut.id}: ${shortcut.openCount} + 1")
