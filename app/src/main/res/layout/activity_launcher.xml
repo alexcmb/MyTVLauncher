@@ -6,7 +6,34 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:descendantFocusability="afterDescendants"
         android:orientation="vertical">
+
+        <!-- Our own title bar. Leanback's lives inside the browse fragment, which would
+             put it below the widget band; this keeps clock and orb at the very top. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="48dp"
+            android:paddingTop="24dp"
+            android:paddingRight="48dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/clock"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp" />
+
+            <androidx.leanback.widget.SearchOrbView
+                android:id="@+id/settings_orb"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
 
         <!-- Fixed widget band. Gone until a widget is added, so with none the browse
              fills the screen exactly as it did before. -->
@@ -19,7 +46,6 @@
         <fragment
             android:id="@+id/browse_fragment"
             android:name="alexcmb.mytvlauncher.browse.BrowseFragment"
-            android:title="@string/app_name"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1" />

@@ -18,7 +18,6 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.leanback.app.BrowseSupportFragment
 import androidx.leanback.widget.ListRowPresenter
-import androidx.leanback.widget.SearchOrbView
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import alexcmb.mytvlauncher.LauncherActivity
@@ -26,21 +25,10 @@ import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.update.UpdateManager
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.text.SimpleDateFormat
-import java.util.*
 
 
 class BrowseFragment : BrowseSupportFragment() {
     private val handler = Handler(Looper.getMainLooper())
-    private val timeFormat: DateFormat by lazy {
-        // Locale-aware, honours the system 12/24h setting, and always includes seconds.
-        val skeleton =
-            if (android.text.format.DateFormat.is24HourFormat(requireContext())) "Hms" else "hms"
-        val pattern =
-            android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton)
-        SimpleDateFormat(pattern, Locale.getDefault())
-    }
     private val updateManager by lazy { UpdateManager(requireContext().applicationContext) }
     private lateinit var viewModel: BrowseViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,13 +55,9 @@ class BrowseFragment : BrowseSupportFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        // Repurpose the Leanback title orb as the settings button.
-        setOnSearchClickedListener { showGlobalMenu() }
-        searchAffordanceColor = ContextCompat.getColor(requireContext(), R.color.menu_accent)
-        (titleViewAdapter?.searchAffordanceView as? SearchOrbView)?.apply {
-            setOrbIcon(ContextCompat.getDrawable(context, R.drawable.ic_settings))
-            contentDescription = getString(R.string.action_settings)
-        }
+        // The clock and the settings orb live in the activity's own title bar, above the
+        // widget band; Leanback's built-in title would sit below it.
+        showTitle(false)
     }
 
     private fun checkForUpdates() {
@@ -119,14 +103,6 @@ class BrowseFragment : BrowseSupportFragment() {
         Toast.makeText(requireContext(), resId, Toast.LENGTH_SHORT).show()
     }
 
-    /** Ticks the clock every second, re-aligning on the whole second so it doesn't drift. */
-    private val tickRunnable = object : Runnable {
-        override fun run() {
-            title = timeFormat.format(Date())
-            handler.postDelayed(this, 1000 - System.currentTimeMillis() % 1000)
-        }
-    }
-
     private fun launch(packageName: String) {
         val packageManager = requireContext().packageManager
         val intent = packageManager.getLeanbackLaunchIntentForPackage(packageName)
@@ -138,7 +114,8 @@ class BrowseFragment : BrowseSupportFragment() {
         }
     }
 
-    private fun showGlobalMenu() {
+    /** Opened from the settings orb, which the activity's title bar owns. */
+    fun showGlobalMenu() {
         val dialog = MenuDialog(requireContext())
             .setTitle(getString(R.string.action_settings))
             .addItem(getString(R.string.action_android_settings)) {
@@ -249,7 +226,6 @@ class BrowseFragment : BrowseSupportFragment() {
 
     override fun onStart() {
         super.onStart()
-        handler.post(tickRunnable)
         ContextCompat.registerReceiver(
             requireContext(), packageChangedReceiver, packageChangedReceiver.getIntentFilter(),
             ContextCompat.RECEIVER_NOT_EXPORTED
@@ -258,7 +234,6 @@ class BrowseFragment : BrowseSupportFragment() {
 
     override fun onStop() {
         super.onStop()
-        handler.removeCallbacks(tickRunnable)
         requireContext().unregisterReceiver(packageChangedReceiver)
     }
 
