@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.browse
 
 import alexcmb.mytvlauncher.LauncherActivity
 import alexcmb.mytvlauncher.R
+import alexcmb.mytvlauncher.compose.ComposePreviewActivity
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetsPageFragment
@@ -102,6 +103,9 @@ class BrowseFragment : BrowseSupportFragment() {
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
             }
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
+            .addItem(getString(R.string.action_preview_new_ui)) {
+                startAppIntent(Intent(requireContext(), ComposePreviewActivity::class.java))
+            }
             .addItem(getString(R.string.widget_add)) { showWidgetPicker() }
         if (widgetSlot.hasWidgets()) {
             dialog.addItem(getString(R.string.widget_resize)) {

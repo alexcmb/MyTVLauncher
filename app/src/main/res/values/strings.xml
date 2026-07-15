@@ -7,6 +7,7 @@
     <string name="action_settings">Settings</string>
     <string name="action_android_settings">Android settings</string>
     <string name="action_check_updates">Check for updates</string>
+    <string name="action_preview_new_ui">Preview new UI</string>
     <string name="widget_add">Add widget</string>
     <string name="widget_remove">Remove widget</string>
     <string name="widget_resize">Resize widget</string>
