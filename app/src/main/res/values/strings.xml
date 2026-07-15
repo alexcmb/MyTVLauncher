@@ -8,6 +8,9 @@
     <string name="widget_add">Add widget</string>
     <string name="widget_remove">Remove widget</string>
     <string name="widget_none_available">No widgets available on this device</string>
+    <string name="widget_bind_refused">Widget was not allowed</string>
+    <string name="widget_bind_unavailable">This device won\'t let the launcher add widgets</string>
+    <string name="widget_configure_failed">Widget setup was cancelled</string>
     <string name="menu_change_category">Change category</string>
     <string name="category_new">New category…</string>
     <string name="category_new_title">New category</string>
