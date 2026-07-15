@@ -21,6 +21,7 @@ import androidx.leanback.widget.ListRowPresenter
 import androidx.leanback.widget.SearchOrbView
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import alexcmb.mytvlauncher.LauncherActivity
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.update.UpdateManager
@@ -144,11 +145,33 @@ class BrowseFragment : BrowseSupportFragment() {
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
             }
             .addItem(getString(R.string.action_check_updates)) { checkForUpdates() }
+        val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
+        if (widgetSlot.hasWidget()) {
+            dialog.addItem(getString(R.string.widget_remove)) { widgetSlot.remove() }
+        } else {
+            dialog.addItem(getString(R.string.widget_add)) { showWidgetPicker() }
+        }
         val hiddenCount = viewModel.hiddenApps.size
         if (hiddenCount > 0) {
             dialog.addItem(getString(R.string.action_hidden_apps, hiddenCount)) {
                 showHiddenAppsDialog()
             }
+        }
+        dialog.show()
+    }
+
+    /** Android TV ships no widget picker, so build one from the installed providers. */
+    private fun showWidgetPicker() {
+        val widgetSlot = (requireActivity() as LauncherActivity).widgetSlot
+        val providers = widgetSlot.availableProviders()
+        if (providers.isEmpty()) {
+            toast(R.string.widget_none_available)
+            return
+        }
+        val packageManager = requireContext().packageManager
+        val dialog = MenuDialog(requireContext()).setTitle(getString(R.string.widget_add))
+        providers.forEach { provider ->
+            dialog.addItem(provider.loadLabel(packageManager)) { widgetSlot.add(provider) }
         }
         dialog.show()
     }
