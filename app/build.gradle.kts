@@ -44,6 +44,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    testOptions {
+        // The pure logic under test never calls into the framework; this keeps any
+        // incidental android.jar reference from throwing "not mocked".
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -54,4 +59,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.leanback:leanback:1.0.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

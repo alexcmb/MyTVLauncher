@@ -39,7 +39,7 @@ class UpdateManager(private val context: Context) {
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
             val apkUrl = firstApkAssetUrl(json) ?: return@withContext null
             val name = json.getString("tag_name").removePrefix("v")
-            Release(name, versionCodeFromName(name), apkUrl)
+            Release(name, ReleaseVersion.codeFromName(name), apkUrl)
         } catch (e: Exception) {
             Log.w(TAG, "fetchLatestRelease failed", e)
             null
@@ -96,15 +96,6 @@ class UpdateManager(private val context: Context) {
             }
         }
         return null
-    }
-
-    /** Mirrors the CI formula: 2026.7.14 -> 2026*10000 + 7*100 + 14 = 20260714. */
-    private fun versionCodeFromName(name: String): Long {
-        val parts = name.split(".")
-        val major = parts.getOrNull(0)?.toLongOrNull() ?: 0
-        val minor = parts.getOrNull(1)?.toLongOrNull() ?: 0
-        val patch = parts.getOrNull(2)?.toLongOrNull() ?: 0
-        return major * 10000 + minor * 100 + patch
     }
 
     companion object {

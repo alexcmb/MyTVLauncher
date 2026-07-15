@@ -1,44 +1,21 @@
 package crazyboyfeng.justTvLauncher.model
 
+/** The apps of one category, kept ordered by open count, most used first. */
 class ShortcutGroup(val category: String, val shortcutList: MutableList<Shortcut>) {
+    /** Total open count of the group, used to order categories against each other. */
     var openCount = shortcutList.sumOf { it.openCount }
-    fun add(element: Shortcut) {
-        openCount += element.openCount
-//        Log.d(TAG,"openCount[${element.id}]=${element.openCount}")
-        val index = findIndex(element.openCount, 0, shortcutList.size - 1)
-//        Log.d(TAG,"list[$index]=${element.openCount}")
-        shortcutList.add(index, element)
+        private set
+
+    init {
+        sortByUsage()
     }
 
-    private tailrec fun findIndex(oc: Int, leftIndex: Int, rightIndex: Int): Int {
-        return when {
-            oc > shortcutList[leftIndex].openCount -> {
-//                Log.d(TAG,"$oc>list[left=$leftIndex]=${shortcutList[leftIndex].openCount}")
-                leftIndex
-            }
-            shortcutList[rightIndex].openCount > oc -> {
-//                Log.d(TAG,"list[right=$rightIndex]=${shortcutList[rightIndex].openCount}>$oc")
-                rightIndex + 1
-            }
-            else -> {
-                val middleIndex = (leftIndex + rightIndex) / 2
-                when {
-                    shortcutList[middleIndex].openCount > oc -> {
-//                        Log.d(TAG,"list[middle=$middleIndex]>$oc")
-                        findIndex(oc, leftIndex, middleIndex)
-                    }
-                    shortcutList[middleIndex].openCount < oc -> {
-//                        Log.d(TAG,"$oc>list[middle=$middleIndex]")
-                        findIndex(oc, middleIndex + 1, rightIndex)
-                    }
-                    else -> {
-                        middleIndex
-                    }
-                }
-            }
-        }
+    fun add(element: Shortcut) {
+        openCount += element.openCount
+        shortcutList.add(element)
+        sortByUsage()
     }
-//    companion object {
-//        private const val TAG = "ShortcutGroup"
-//    }
+
+    // Stable, so shortcuts with equal open counts keep their insertion order.
+    private fun sortByUsage() = shortcutList.sortByDescending { it.openCount }
 }
