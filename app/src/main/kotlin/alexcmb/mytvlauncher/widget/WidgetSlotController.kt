@@ -24,13 +24,14 @@ import androidx.annotation.StringRes
  * binding is attempted every way the platform offers, and if none is available the
  * user is told about the one-time adb grant that TV launchers rely on.
  */
-class WidgetSlotController(
-    private val activity: Activity,
-    private val band: LinearLayout,
-) {
+class WidgetSlotController(private val activity: Activity) {
     private val appWidgetManager = AppWidgetManager.getInstance(activity)
     private val host = AppWidgetHost(activity, HOST_ID)
     private val repository = WidgetRepository.getInstance(activity)
+
+    // The band belongs to the widgets page, which comes and goes as pages are switched.
+    private var band: LinearLayout? = null
+    private var emptyHint: View? = null
 
     /**
      * The widget being bound/configured. Held here rather than read back from the
@@ -53,8 +54,20 @@ class WidgetSlotController(
         hosted.id to info.loadLabel(activity.packageManager)
     }
 
+    fun attachBand(band: LinearLayout, emptyHint: View) {
+        this.band = band
+        this.emptyHint = emptyHint
+        refresh()
+    }
+
+    fun detachBand() {
+        band = null
+        emptyHint = null
+    }
+
     /** Rebuilds the band from what's stored, dropping widgets whose provider went away. */
     fun refresh() {
+        val band = band ?: return
         band.removeAllViews()
         repository.query().forEach { hosted ->
             val info = appWidgetManager.getAppWidgetInfo(hosted.id)
@@ -66,7 +79,9 @@ class WidgetSlotController(
             }
             band.addView(createView(hosted, info))
         }
-        band.visibility = if (band.childCount > 0) View.VISIBLE else View.GONE
+        val empty = band.childCount == 0
+        band.visibility = if (empty) View.GONE else View.VISIBLE
+        emptyHint?.visibility = if (empty) View.VISIBLE else View.GONE
     }
 
     fun add(provider: AppWidgetProviderInfo) {

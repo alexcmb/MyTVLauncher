@@ -2,6 +2,8 @@
     <string name="app_name">My TV Launcher</string>
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
+    <string name="title_widgets">Widgets</string>
+    <string name="widget_empty_hint">No widgets yet — add one from Settings.</string>
     <string name="action_settings">Settings</string>
     <string name="action_android_settings">Android settings</string>
     <string name="action_check_updates">Check for updates</string>
