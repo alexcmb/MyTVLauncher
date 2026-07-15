@@ -3,7 +3,15 @@
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
     <string name="action_settings">Settings</string>
+    <string name="action_android_settings">Android settings</string>
     <string name="action_check_updates">Check for updates</string>
+    <string name="widget_add">Add widget</string>
+    <string name="widget_remove">Remove widget</string>
+    <string name="widget_none_available">No widgets available on this device</string>
+    <string name="widget_bind_refused">Widget was not allowed</string>
+    <string name="widget_configure_failed">Widget setup was cancelled</string>
+    <string name="widget_permission_title">Widgets need a one-time permission</string>
+    <string name="widget_permission_message">Android only lets a launcher add widgets once it has been allowed to, and this device has no screen to ask for it.\n\nFrom a computer with ADB connected to this TV, run:\n\n%1$s\n\nThen add the widget again.</string>
     <string name="menu_change_category">Change category</string>
     <string name="category_new">New category…</string>
     <string name="category_new_title">New category</string>
