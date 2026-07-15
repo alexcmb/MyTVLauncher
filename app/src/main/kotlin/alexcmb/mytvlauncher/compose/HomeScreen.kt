@@ -52,7 +52,12 @@ private val Muted = Color(0xFF9AA0B4)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun HomeScreen(tabs: List<HomeTab>, clock: String, onLaunch: (Shortcut) -> Unit) {
+fun HomeScreen(
+    tabs: List<HomeTab>,
+    clock: String,
+    onLaunch: (Shortcut) -> Unit,
+    onLongPress: (Shortcut) -> Unit,
+) {
     var selectedTab by remember { mutableStateOf(0) }
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
@@ -71,7 +76,7 @@ fun HomeScreen(tabs: List<HomeTab>, clock: String, onLaunch: (Shortcut) -> Unit)
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(tab.shortcuts, key = { it.id }) { shortcut ->
-                            AppCard(shortcut, onLaunch) { focused = shortcut }
+                            AppCard(shortcut, onLaunch, onLongPress) { focused = shortcut }
                         }
                     }
                 }
@@ -155,9 +160,15 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>) {
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun AppCard(shortcut: Shortcut, onLaunch: (Shortcut) -> Unit, onFocus: () -> Unit) {
+private fun AppCard(
+    shortcut: Shortcut,
+    onLaunch: (Shortcut) -> Unit,
+    onLongPress: (Shortcut) -> Unit,
+    onFocus: () -> Unit,
+) {
     Card(
         onClick = { onLaunch(shortcut) },
+        onLongClick = { onLongPress(shortcut) },
         scale = CardDefaults.scale(focusedScale = 1.08f),
         border = CardDefaults.border(
             focusedBorder = androidx.tv.material3.Border(

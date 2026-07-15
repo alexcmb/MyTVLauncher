@@ -1,0 +1,93 @@
+package alexcmb.mytvlauncher.compose
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Text
+
+/** One line of a [TvMenu]. */
+data class MenuItem(val label: String, val onClick: () -> Unit)
+
+/** A menu to show: nesting is just replacing the spec with the next one. */
+data class MenuSpec(val title: String, val items: List<MenuItem>)
+
+private val Panel = Color(0xF0202020)
+private val Accent = Color(0xFF3D5AFE)
+
+/**
+ * A menu over the home screen: scrim, dark panel, focusable rows. Back closes it, and the
+ * first row takes the focus so the remote lands somewhere useful.
+ */
+@Composable
+fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
+    BackHandler(onBack = onDismiss)
+    val firstRow = remember { FocusRequester() }
+    LaunchedEffect(spec) { firstRow.requestFocus() }
+
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 360.dp)
+                .heightIn(max = 480.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .padding(24.dp),
+        ) {
+            Text(
+                text = spec.title,
+                color = Color.White,
+                fontSize = 20.sp,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+            )
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                spec.items.forEachIndexed { index, item ->
+                    MenuRow(item, if (index == 0) Modifier.focusRequester(firstRow) else Modifier)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuRow(item: MenuItem, modifier: Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .clickable { item.onClick() }
+            .background(
+                color = if (focused) Accent else Color.Transparent,
+                shape = RoundedCornerShape(6.dp),
+            )
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+    ) {
+        Text(item.label, color = Color.White, fontSize = 18.sp)
+    }
+}
