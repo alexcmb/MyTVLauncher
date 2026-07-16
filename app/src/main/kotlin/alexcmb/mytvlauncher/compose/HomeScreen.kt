@@ -207,7 +207,7 @@ private fun Hub(
             )
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(favourites, key = { it.id }) { shortcut ->
-                    AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(220.dp))
+                    AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(150.dp))
                 }
             }
         }
