@@ -250,9 +250,10 @@ private fun AppsGrid(
 private fun AmbientBackdrop(focused: Shortcut?) {
     Crossfade(targetState = focused?.banner, label = "backdrop") { banner ->
         if (banner != null) {
+            val bitmap = remember(banner) { banner.toBitmap().asImageBitmap() }
             Box(Modifier.fillMaxSize()) {
                 Image(
-                    bitmap = banner.toBitmap().asImageBitmap(),
+                    bitmap = bitmap,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alpha = 0.30f,
@@ -301,11 +302,16 @@ private fun AppCard(
     }
 }
 
-/** App artwork arrives as Drawables from the PackageManager, not as Compose painters. */
+/**
+ * App artwork arrives as Drawables from the PackageManager, not as Compose painters.
+ * Cached per drawable: converting on every recomposition made scrolling — and, with it,
+ * remote clicks — feel sluggish on a modest box.
+ */
 @Composable
 private fun DrawableImage(drawable: Drawable, modifier: Modifier, scale: ContentScale) {
+    val bitmap = remember(drawable) { drawable.toBitmap().asImageBitmap() }
     Image(
-        bitmap = drawable.toBitmap().asImageBitmap(),
+        bitmap = bitmap,
         contentDescription = null,
         contentScale = scale,
         modifier = modifier,
