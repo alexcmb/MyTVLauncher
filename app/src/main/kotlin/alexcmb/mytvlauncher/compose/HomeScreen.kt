@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -69,8 +70,6 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Tab
-import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
@@ -155,23 +154,42 @@ private fun TopBar(
         }
         Spacer(Modifier.width(28.dp))
         // Left-aligned so a tab sits directly above the content — that alignment is what
-        // lets DPAD-up out of the grid land back on the tabs.
+        // lets DPAD-up out of the grid land back on the tabs. A hand-rolled row rather than
+        // tv-material's TabRow: its sliding indicator animation hitched on the tab change.
         if (tabs.isNotEmpty()) {
-            TabRow(selectedTabIndex = selected) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 tabs.forEachIndexed { index, tab ->
-                    Tab(selected = index == selected, onFocus = { onSelect(index) }) {
-                        Text(
-                            text = tab.title,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                    }
+                    TabChip(tab.title, selected = index == selected) { onSelect(index) }
                 }
             }
         }
         Spacer(Modifier.weight(1f))
         SettingsOrb(onSettings)
     }
+}
+
+/** One tab: focus selects it, the selected one wears the accent. No slide animation. */
+@Composable
+private fun TabChip(title: String, selected: Boolean, onSelect: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val background = when {
+        selected -> LocalAccent.current
+        focused -> Color.White.copy(alpha = 0.15f)
+        else -> Color.Transparent
+    }
+    Text(
+        text = title,
+        color = if (selected) Color.White else Muted,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onSelect()
+            }
+            .clickable { onSelect() }
+            .background(background, RoundedCornerShape(99.dp))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+    )
 }
 
 @Composable
