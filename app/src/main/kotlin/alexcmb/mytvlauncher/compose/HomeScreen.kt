@@ -7,11 +7,13 @@ import alexcmb.mytvlauncher.repository.CardSize
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -282,12 +284,7 @@ private fun Hub(
                     // Key by size too: resizing gives a new node, so a fresh host view is
                     // built at the new size instead of the cached one being reused.
                     key(tile.id, tile.widthDp, tile.heightDp) {
-                        AndroidView(
-                            factory = { tile.createView() },
-                            // Clip: some widgets draw past the size they're handed.
-                            modifier = Modifier.size(tile.widthDp.dp, tile.heightDp.dp)
-                                .clipToBounds(),
-                        )
+                        WidgetTileView(tile)
                     }
                 }
             }
@@ -333,6 +330,26 @@ private fun AppsGrid(
         items(shortcuts, key = { it.id }) { shortcut ->
             AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier)
         }
+    }
+}
+
+/** A hosted widget with a focus response of its own — it grows and takes an accent border,
+ *  since the widget's own artwork rarely shows focus clearly. */
+@Composable
+private fun WidgetTileView(tile: WidgetTile) {
+    var focused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(160), label = "widgetScale")
+    val borderWidth by animateDpAsState(if (focused) 3.dp else 0.dp, tween(160), label = "widgetBorder")
+    Box(
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .size(tile.widthDp.dp, tile.heightDp.dp)
+            .onFocusChanged { focused = it.hasFocus }
+            .border(borderWidth, LocalAccent.current, RoundedCornerShape(8.dp))
+            // Clip: some widgets draw past the size they're handed.
+            .clipToBounds(),
+    ) {
+        AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
     }
 }
 
