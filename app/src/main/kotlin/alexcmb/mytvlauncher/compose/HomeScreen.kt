@@ -5,6 +5,7 @@ import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import alexcmb.mytvlauncher.widget.WidgetSize
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
@@ -28,12 +29,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +50,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -83,11 +92,10 @@ private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its size, where it sits, and a factory for its host view. */
+/** A widget to place on the hub: its scale, where it sits, and a factory for its host view. */
 data class WidgetTile(
     val id: Int,
-    val widthDp: Int,
-    val heightDp: Int,
+    val scale: Float,
     val alignment: WidgetAlignment,
     val createView: () -> View,
 )
@@ -114,6 +122,9 @@ fun HomeScreen(
     var selectedTab by remember { mutableStateOf(0) }
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
+    // DPAD-up from the content lands back on the selected tab. The tabs are centred, so
+    // spatial focus search would drift to the settings orb instead — this wires it directly.
+    val tabsFocus = remember { FocusRequester() }
 
     // The accent normally comes from the activity's fixed choice. In "auto" mode it tracks
     // the focused app's banner; re-provided here since only this screen knows the focus.
@@ -132,7 +143,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().then(rootBackground)) {
             if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
-                TopBar(tabs, selectedTab, clock, onSettings) { selectedTab = it; focused = null }
+                TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
                 Hero(focused, tab?.shortcuts.orEmpty())
                 when {
                     tab == null -> Unit
@@ -141,12 +152,13 @@ fun HomeScreen(
                         widgets = widgets,
                         favourites = tab.shortcuts.take(FAVOURITES),
                         cardSize = cardSize,
+                        tabsFocus = tabsFocus,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
-                    else -> AppsGrid(tab.shortcuts, cardSize, onLaunch, onLongPress) { focused = it }
+                    else -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, onLaunch, onLongPress) { focused = it }
                 }
             }
         }
@@ -160,6 +172,7 @@ private fun TopBar(
     tabs: List<HomeTab>,
     selected: Int,
     clock: ClockOptions,
+    tabsFocus: FocusRequester,
     onSettings: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -175,7 +188,12 @@ private fun TopBar(
         if (tabs.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 tabs.forEachIndexed { index, tab ->
-                    TabChip(tab.title, selected = index == selected) { onSelect(index) }
+                    // The selected chip is the up-target from the content below.
+                    val chipModifier =
+                        if (index == selected) Modifier.focusRequester(tabsFocus) else Modifier
+                    TabChip(tab.title, selected = index == selected, modifier = chipModifier) {
+                        onSelect(index)
+                    }
                 }
             }
         }
@@ -192,7 +210,12 @@ private fun TopBar(
 
 /** One tab: focus selects it, the selected one wears the accent. No slide animation. */
 @Composable
-private fun TabChip(title: String, selected: Boolean, onSelect: () -> Unit) {
+private fun TabChip(
+    title: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val background = when {
         selected -> LocalAccent.current
@@ -203,7 +226,7 @@ private fun TabChip(title: String, selected: Boolean, onSelect: () -> Unit) {
         text = title,
         color = if (selected) Color.White else Muted,
         fontSize = 13.sp,
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onSelect()
@@ -260,6 +283,7 @@ private fun Hub(
     widgets: List<WidgetTile>,
     favourites: List<Shortcut>,
     cardSize: CardSize,
+    tabsFocus: FocusRequester,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -283,11 +307,31 @@ private fun Hub(
     )
     val density = LocalDensity.current
     val bandRisePx = remember(widgets) {
-        if (widgets.isEmpty()) 0f else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
+        if (widgets.isEmpty()) 0f
+        else with(density) {
+            (WidgetSize.BASE_HEIGHT_DP * widgets.maxOf { it.scale } + 24).dp.toPx()
+        }
     }
     val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
 
-    Column(Modifier.padding(start = 48.dp, end = 48.dp).focusGroup()) {
+    Column(
+        Modifier
+            .padding(start = 48.dp, end = 48.dp)
+            .focusGroup()
+            // DPAD-up from the top of the hub goes to the tabs, not the (spatially closer)
+            // settings orb. Only redirect from the top row: a focused widget, or the
+            // favourites when there are no widgets above them. A previewed key so it wins
+            // even over an embedded widget view that might otherwise swallow the press.
+            .onPreviewKeyEvent { event ->
+                val atTop = focusedWidget != null || widgets.isEmpty()
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp && atTop) {
+                    tabsFocus.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
         if (widgets.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -352,23 +396,31 @@ private fun WidgetZone(
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
 ) {
+    val baseW = WidgetSize.BASE_WIDTH_DP.dp
+    val baseH = WidgetSize.BASE_HEIGHT_DP.dp
     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
-            // Key by size too: resizing gives a new node, so a fresh host view is
-            // built at the new size instead of the cached one being reused.
-            key(tile.id, tile.widthDp, tile.heightDp) {
+            key(tile.id) {
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
+                // The tile occupies the scaled footprint; the host view is always built at
+                // the base size (so its RemoteViews lay out well) and scaled to fit — most
+                // widgets clip rather than shrink if handed a small size directly.
                 Box(
                     modifier = Modifier
-                        .size(tile.widthDp.dp, tile.heightDp.dp)
+                        .size(baseW * tile.scale, baseH * tile.scale)
                         .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
                         .graphicsLayer { alpha = tileAlpha }
-                        // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
+                    AndroidView(
+                        factory = { tile.createView() },
+                        modifier = Modifier
+                            .requiredSize(baseW, baseH)
+                            .graphicsLayer { scaleX = tile.scale; scaleY = tile.scale },
+                    )
                 }
             }
         }
@@ -379,19 +431,34 @@ private fun WidgetZone(
 private fun AppsGrid(
     shortcuts: List<Shortcut>,
     cardSize: CardSize,
+    tabsFocus: FocusRequester,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
 ) {
+    var focusedIndex by remember { mutableStateOf(-1) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(cardSize.columns),
         contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier.focusGroup(),
+        // DPAD-up from the top row goes to the tabs, not the settings orb; deeper rows keep
+        // their natural up navigation within the grid.
+        modifier = Modifier
+            .focusGroup()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
+                    focusedIndex in 0 until cardSize.columns
+                ) {
+                    tabsFocus.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            },
     ) {
-        items(shortcuts, key = { it.id }) { shortcut ->
-            AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier)
+        itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
+            AppCard(shortcut, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
         }
     }
 }

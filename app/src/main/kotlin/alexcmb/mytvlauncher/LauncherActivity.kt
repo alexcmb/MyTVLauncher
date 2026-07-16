@@ -81,6 +81,16 @@ class LauncherActivity : ComponentActivity() {
         background = settings.background()
         cardSize = settings.cardSize()
         widgetSlot.onChanged = { refreshWidgets() }
+        if (savedInstanceState == null) {
+            // Cold start only: clean widget ids left over from cancelled/interrupted adds.
+            // Never mid-session — an add's configure screen can stop/recreate us, and pruning
+            // then would delete the widget being added.
+            widgetSlot.pruneOrphans()
+        } else {
+            // Carry the in-flight add across a recreation so its configure result isn't lost.
+            widgetSlot.pendingWidgetId =
+                savedInstanceState.getInt(STATE_PENDING_WIDGET, WidgetSlotController.NO_WIDGET)
+        }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -122,6 +132,11 @@ class LauncherActivity : ComponentActivity() {
         refreshWidgets()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_PENDING_WIDGET, widgetSlot.pendingWidgetId)
+    }
+
     override fun onStop() {
         super.onStop()
         widgetSlot.stopListening()
@@ -142,16 +157,16 @@ class LauncherActivity : ComponentActivity() {
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return
-    // to Home was what made the tab change hitch. Keyed by id, invalidated on a size change.
-    private val hostViews = HashMap<Int, Pair<WidgetSize, View>>()
+    // to Home was what made the tab change hitch. Keyed by id — the host view is always built
+    // at the base size now (Compose scales it), so a resize no longer needs a fresh view.
+    private val hostViews = HashMap<Int, View>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
         widgets = hosted.map { h ->
-            WidgetTile(h.id, h.size.widthDp, h.size.heightDp, h.alignment) {
-                val cached = hostViews[h.id]?.takeIf { it.first == h.size }?.second
-                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = h.size to it }
+            WidgetTile(h.id, h.size.scale, h.alignment) {
+                val view = hostViews[h.id] ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
                 // It may still be attached to the AndroidView from the previous visit.
                 (view.parent as? ViewGroup)?.removeView(view)
                 view
@@ -476,6 +491,7 @@ class LauncherActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "LauncherActivity"
+        const val STATE_PENDING_WIDGET = "pending_widget"
     }
 }
 
