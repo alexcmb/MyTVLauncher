@@ -101,6 +101,7 @@ fun HomeScreen(
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
                         onFocus = { focused = it },
+                        onWidgetsFocused = { focused = null },
                     )
                     else -> AppsGrid(tab.shortcuts, onLaunch, onLongPress) { focused = it }
                 }
@@ -192,6 +193,7 @@ private fun Hub(
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
+    onWidgetsFocused: () -> Unit,
 ) {
     // As focus moves down to the apps, the widgets slide up and fade and the app cards
     // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
@@ -212,7 +214,13 @@ private fun Hub(
         if (widgets.isNotEmpty()) {
             Row(
                 modifier = Modifier
-                    .onFocusChanged { if (it.hasFocus) appsFocused = false }
+                    .onFocusChanged {
+                        if (it.hasFocus) {
+                            appsFocused = false
+                            // Widgets aren't apps: drop the app backdrop back to black.
+                            onWidgetsFocused()
+                        }
+                    }
                     .graphicsLayer {
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
