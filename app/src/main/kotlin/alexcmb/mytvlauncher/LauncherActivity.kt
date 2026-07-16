@@ -14,6 +14,7 @@ import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.BackgroundStyle
+import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetSize
@@ -64,6 +65,7 @@ class LauncherActivity : ComponentActivity() {
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
+    private var cardSize by mutableStateOf(CardSize.MEDIUM)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,6 +76,7 @@ class LauncherActivity : ComponentActivity() {
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
         background = settings.background()
+        cardSize = settings.cardSize()
         widgetSlot.onChanged = { refreshWidgets() }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -90,6 +93,7 @@ class LauncherActivity : ComponentActivity() {
                         widgets = widgets,
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
+                        cardSize = cardSize,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
@@ -232,6 +236,23 @@ class LauncherActivity : ComponentActivity() {
                 MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
                 MenuItem(getString(R.string.action_clock)) { showClockMenu() },
                 MenuItem(getString(R.string.action_background)) { showBackgroundMenu() },
+                MenuItem(getString(R.string.action_card_size)) { showCardSizeMenu() },
+            ),
+        )
+    }
+
+    private fun showCardSizeMenu() {
+        fun choice(label: Int, size: CardSize) = MenuItem(getString(label)) {
+            menu = null
+            settings.setCardSize(size)
+            cardSize = size
+        }
+        menu = MenuSpec(
+            title = getString(R.string.action_card_size),
+            items = listOf(
+                choice(R.string.widget_size_small, CardSize.SMALL),
+                choice(R.string.widget_size_medium, CardSize.MEDIUM),
+                choice(R.string.widget_size_large, CardSize.LARGE),
             ),
         )
     }

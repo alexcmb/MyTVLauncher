@@ -11,6 +11,7 @@
     <string name="action_appearance">Appearance</string>
     <string name="action_clock">Clock</string>
     <string name="action_background">Background</string>
+    <string name="action_card_size">Card size</string>
     <string name="background_ambient">Ambient banner</string>
     <string name="background_gradient">Accent gradient</string>
     <string name="background_solid">Solid</string>

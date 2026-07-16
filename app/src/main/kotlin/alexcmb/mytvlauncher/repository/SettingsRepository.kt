@@ -13,6 +13,13 @@ enum class AccentColor(val argb: Long) {
     BLUE(0xFF378ADD),
 }
 
+/** How big the app cards are: fewer columns and wider favourites mean bigger cards. */
+enum class CardSize(val columns: Int, val favouriteWidthDp: Int) {
+    SMALL(6, 130),
+    MEDIUM(5, 150),
+    LARGE(4, 190),
+}
+
 /** What fills the home screen behind everything. */
 enum class BackgroundStyle {
     /** Plain dark. */
@@ -33,6 +40,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_CLOCK_DATE = "clock_date"
         private const val KEY_GREETING = "greeting"
         private const val KEY_BACKGROUND = "background"
+        private const val KEY_CARD_SIZE = "card_size"
     }
 
     private val sharedPreferences = context.getSharedPreferences("settings", 0)
@@ -67,4 +75,12 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setBackground(style: BackgroundStyle) =
         sharedPreferences.edit().putString(KEY_BACKGROUND, style.name).apply()
+
+    fun cardSize(): CardSize =
+        sharedPreferences.getString(KEY_CARD_SIZE, null)
+            ?.let { runCatching { CardSize.valueOf(it) }.getOrNull() }
+            ?: CardSize.MEDIUM
+
+    fun setCardSize(size: CardSize) =
+        sharedPreferences.edit().putString(KEY_CARD_SIZE, size.name).apply()
 }

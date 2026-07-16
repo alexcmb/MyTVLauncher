@@ -10,6 +10,7 @@
     <string name="action_appearance">Apparence</string>
     <string name="action_clock">Horloge</string>
     <string name="action_background">Fond</string>
+    <string name="action_card_size">Taille des cartes</string>
     <string name="background_ambient">Bannière ambiante</string>
     <string name="background_gradient">Dégradé d\'accent</string>
     <string name="background_solid">Uni</string>

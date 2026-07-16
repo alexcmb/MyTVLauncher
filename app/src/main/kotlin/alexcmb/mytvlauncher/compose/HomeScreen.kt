@@ -3,6 +3,7 @@ package alexcmb.mytvlauncher.compose
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
+import alexcmb.mytvlauncher.repository.CardSize
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
@@ -74,7 +75,6 @@ import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
-private const val COLUMNS = 5
 private const val FAVOURITES = 8
 
 /** A widget to place on the hub: its size and a factory for its host view. */
@@ -93,6 +93,7 @@ fun HomeScreen(
     widgets: List<WidgetTile>,
     clock: ClockOptions,
     background: BackgroundStyle,
+    cardSize: CardSize,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onSettings: () -> Unit,
@@ -120,12 +121,13 @@ fun HomeScreen(
                     selectedTab == 0 -> Hub(
                         widgets = widgets,
                         favourites = tab.shortcuts.take(FAVOURITES),
+                        cardSize = cardSize,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
-                    else -> AppsGrid(tab.shortcuts, onLaunch, onLongPress) { focused = it }
+                    else -> AppsGrid(tab.shortcuts, cardSize, onLaunch, onLongPress) { focused = it }
                 }
             }
         }
@@ -237,6 +239,7 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>) {
 private fun Hub(
     widgets: List<WidgetTile>,
     favourites: List<Shortcut>,
+    cardSize: CardSize,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -255,7 +258,7 @@ private fun Hub(
     val bandRisePx = remember(widgets) {
         if (widgets.isEmpty()) 0f else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
     }
-    val cardWidth = lerp(150.dp, 210.dp, collapse)
+    val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
 
     Column(Modifier.padding(start = 48.dp, end = 48.dp).focusGroup()) {
         if (widgets.isNotEmpty()) {
@@ -315,12 +318,13 @@ private fun Hub(
 @Composable
 private fun AppsGrid(
     shortcuts: List<Shortcut>,
+    cardSize: CardSize,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(COLUMNS),
+        columns = GridCells.Fixed(cardSize.columns),
         contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
