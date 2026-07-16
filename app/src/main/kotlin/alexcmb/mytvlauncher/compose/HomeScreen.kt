@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.widget.DisplayWidget
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -38,6 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
@@ -56,6 +59,7 @@ private val Muted = Color(0xFF9AA0B4)
 @Composable
 fun HomeScreen(
     tabs: List<HomeTab>,
+    widgets: List<DisplayWidget>,
     clock: String,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
@@ -84,12 +88,32 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
+                        // The first tab is a dashboard: widgets on top, most-used apps below.
+                        if (selectedTab == 0 && widgets.isNotEmpty()) {
+                            item(span = { GridItemSpan(maxLineSpan) }) { WidgetBand(widgets) }
+                        }
                         items(tab.shortcuts, key = { it.id }) { shortcut ->
                             AppCard(shortcut, onLaunch, onLongPress) { focused = shortcut }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** Embeds the hosted app widgets — real Android Views — as a row atop the dashboard. */
+@Composable
+private fun WidgetBand(widgets: List<DisplayWidget>) {
+    Row(
+        modifier = Modifier.padding(bottom = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        widgets.forEach { widget ->
+            AndroidView(
+                factory = { widget.view },
+                modifier = Modifier.size(widget.widthDp.dp, widget.heightDp.dp),
+            )
         }
     }
 }

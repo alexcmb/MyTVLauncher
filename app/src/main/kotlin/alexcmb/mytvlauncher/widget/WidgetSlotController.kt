@@ -54,6 +54,21 @@ class WidgetSlotController(private val activity: Activity) {
         hosted.id to info.loadLabel(activity.packageManager)
     }
 
+    /** Host views for the stored widgets, ready to embed in Compose; drops stale ones. */
+    fun widgetsForDisplay(): List<DisplayWidget> = repository.query().mapNotNull { hosted ->
+        val info = appWidgetManager.getAppWidgetInfo(hosted.id)
+        if (info == null) {
+            host.deleteAppWidgetId(hosted.id)
+            repository.remove(hosted.id)
+            return@mapNotNull null
+        }
+        val view = host.createView(activity, hosted.id, info)
+        view.updateAppWidgetSize(
+            null, hosted.size.widthDp, hosted.size.heightDp, hosted.size.widthDp, hosted.size.heightDp
+        )
+        DisplayWidget(hosted.size.widthDp, hosted.size.heightDp, view)
+    }
+
     fun attachBand(band: LinearLayout, emptyHint: View) {
         this.band = band
         this.emptyHint = emptyHint

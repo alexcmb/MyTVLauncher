@@ -3,7 +3,7 @@
     <string name="title_apps">Apps</string>
     <string name="title_system">System</string>
     <string name="title_widgets">Widgets</string>
-    <string name="title_all">All</string>
+    <string name="title_home">Home</string>
     <string name="home_opens_top">Opened %1$d times · your most used</string>
     <string name="home_opens_ranked">Opened %1$d times · #%2$d here</string>
     <string name="home_never_opened">Never opened</string>

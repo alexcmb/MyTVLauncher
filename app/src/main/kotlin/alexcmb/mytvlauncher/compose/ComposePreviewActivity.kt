@@ -5,6 +5,8 @@ import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.widget.DisplayWidget
+import alexcmb.mytvlauncher.widget.WidgetSlotController
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -44,6 +46,7 @@ class ComposePreviewActivity : ComponentActivity() {
 
     private lateinit var viewModel: BrowseViewModel
     private val updateManager by lazy { UpdateManager(applicationContext) }
+    private val widgetSlot by lazy { WidgetSlotController(this) }
 
     private var menu by mutableStateOf<MenuSpec?>(null)
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
@@ -54,10 +57,13 @@ class ComposePreviewActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
-            val tabs = HomeTabs.from(groups, stringResource(R.string.title_all))
+            val tabs = HomeTabs.from(groups, stringResource(R.string.title_home))
+            // Built once: the same host View can't be embedded twice, and widgets rarely change.
+            val widgets = remember { widgetSlot.widgetsForDisplay() }
             Box {
                 HomeScreen(
                     tabs = tabs,
+                    widgets = widgets,
                     clock = rememberClock(),
                     onLaunch = ::launchShortcut,
                     onLongPress = ::showAppMenu,
@@ -74,6 +80,16 @@ class ComposePreviewActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        widgetSlot.startListening()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        widgetSlot.stopListening()
     }
 
     private fun showAppMenu(shortcut: Shortcut) {
