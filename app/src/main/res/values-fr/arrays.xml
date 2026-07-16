@@ -1,0 +1,8 @@
+<resources>
+    <string-array name="category_presets">
+        <item>Streaming</item>
+        <item>Jeux</item>
+        <item>Musique</item>
+        <item>Utilitaires</item>
+    </string-array>
+</resources>
