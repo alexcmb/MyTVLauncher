@@ -1,7 +1,6 @@
 <resources>
-    <style name="Theme.JustTvLauncher" parent="Theme.Leanback">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:colorBackgroundCacheHint">@null</item>
-        <item name="android:windowShowWallpaper">true</item>
+    <!-- No Leanback parent anymore: the UI is Compose, which paints its own dark surface. -->
+    <style name="Theme.JustTvLauncher" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>
