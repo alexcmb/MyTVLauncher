@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -56,6 +58,11 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
@@ -74,15 +81,18 @@ private const val FAVOURITES = 8
 /** A widget to place on the hub: its size and a factory for its host view. */
 data class WidgetTile(val id: Int, val widthDp: Int, val heightDp: Int, val createView: () -> View)
 
-/** What the title bar shows on the left: a live clock, plus optional greeting and date. */
-data class TopBarClock(val time: String, val date: String?, val greeting: String?)
+/** Title-bar clock preferences; the live values are derived inside the bar. */
+data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
+
+/** The derived clock values shown on the left of the title bar. */
+private data class ClockValues(val time: String, val date: String?, val greeting: String?)
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
     tabs: List<HomeTab>,
     widgets: List<WidgetTile>,
-    clock: TopBarClock,
+    clock: ClockOptions,
     background: BackgroundStyle,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
@@ -128,7 +138,7 @@ fun HomeScreen(
 private fun TopBar(
     tabs: List<HomeTab>,
     selected: Int,
-    clock: TopBarClock,
+    clock: ClockOptions,
     onSettings: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -136,10 +146,12 @@ private fun TopBar(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Derived here so the once-a-second tick only recomposes the bar, not the screen.
+        val values = rememberClockValues(clock)
         Column {
-            clock.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
-            Text(clock.time, color = Color.White, fontSize = 20.sp)
-            clock.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
+            values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
+            Text(values.time, color = Color.White, fontSize = 20.sp)
+            values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
         }
         Spacer(Modifier.width(28.dp))
         // Left-aligned so a tab sits directly above the content — that alignment is what
@@ -356,6 +368,45 @@ private fun AppCard(
                 )
             }
         }
+    }
+}
+
+/** The live clock, re-aligned on the whole second so it doesn't drift. */
+@Composable
+private fun rememberClockValues(options: ClockOptions): ClockValues {
+    val context = LocalContext.current
+    val locale = Locale.getDefault()
+    val timeFormat = remember(context, options.seconds) {
+        val is24 = android.text.format.DateFormat.is24HourFormat(context)
+        val skeleton = (if (is24) "Hm" else "hm") + (if (options.seconds) "s" else "")
+        SimpleDateFormat(
+            android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton), locale
+        )
+    }
+    val dateFormat = remember(locale) {
+        SimpleDateFormat(
+            android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), locale
+        )
+    }
+    val now by produceState(initialValue = Date()) {
+        while (true) {
+            delay(1000 - System.currentTimeMillis() % 1000)
+            value = Date()
+        }
+    }
+    return ClockValues(
+        time = timeFormat.format(now),
+        date = if (options.date) dateFormat.format(now).replaceFirstChar { it.uppercase(locale) } else null,
+        greeting = if (options.greeting) stringResource(greetingRes(now)) else null,
+    )
+}
+
+private fun greetingRes(now: Date): Int {
+    val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
+    return when (hour) {
+        in 5..11 -> R.string.greeting_morning
+        in 12..17 -> R.string.greeting_afternoon
+        else -> R.string.greeting_evening
     }
 }
 

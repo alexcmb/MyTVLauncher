@@ -9,8 +9,8 @@ import alexcmb.mytvlauncher.compose.MenuSpec
 import alexcmb.mytvlauncher.compose.TvMenu
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
+import alexcmb.mytvlauncher.compose.ClockOptions
 import alexcmb.mytvlauncher.compose.LocalAccent
-import alexcmb.mytvlauncher.compose.TopBarClock
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.BackgroundStyle
@@ -31,25 +31,16 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 
 /**
  * The launcher home, in Compose for TV. Overlay state (the menus, the rename prompt) lives
@@ -95,7 +86,7 @@ class LauncherActivity : ComponentActivity() {
                     HomeScreen(
                         tabs = tabs,
                         widgets = widgets,
-                        clock = rememberTopBarClock(clockShowSeconds, clockShowDate, showGreeting),
+                        clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
@@ -423,46 +414,3 @@ class LauncherActivity : ComponentActivity() {
     }
 }
 
-/** The live title-bar clock; re-aligns on the whole second so it doesn't drift. */
-@Composable
-private fun rememberTopBarClock(
-    showSeconds: Boolean,
-    showDate: Boolean,
-    showGreeting: Boolean,
-): TopBarClock {
-    val context = LocalContext.current
-    val locale = Locale.getDefault()
-    val timeFormat = remember(context, showSeconds) {
-        // Locale-aware, honours the system 12/24h setting.
-        val is24 = android.text.format.DateFormat.is24HourFormat(context)
-        val skeleton = (if (is24) "Hm" else "hm") + (if (showSeconds) "s" else "")
-        SimpleDateFormat(
-            android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton), locale
-        )
-    }
-    val dateFormat = remember(locale) {
-        SimpleDateFormat(
-            android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), locale
-        )
-    }
-    val now by produceState(initialValue = Date()) {
-        while (true) {
-            delay(1000 - System.currentTimeMillis() % 1000)
-            value = Date()
-        }
-    }
-    return TopBarClock(
-        time = timeFormat.format(now),
-        date = if (showDate) dateFormat.format(now).replaceFirstChar { it.uppercase(locale) } else null,
-        greeting = if (showGreeting) stringResource(greetingRes(now)) else null,
-    )
-}
-
-private fun greetingRes(now: Date): Int {
-    val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
-    return when (hour) {
-        in 5..11 -> R.string.greeting_morning
-        in 12..17 -> R.string.greeting_afternoon
-        else -> R.string.greeting_evening
-    }
-}
