@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.repository.BackgroundStyle
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
@@ -81,6 +83,7 @@ fun HomeScreen(
     tabs: List<HomeTab>,
     widgets: List<WidgetTile>,
     clock: TopBarClock,
+    background: BackgroundStyle,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onSettings: () -> Unit,
@@ -90,8 +93,15 @@ fun HomeScreen(
     val tab = tabs.getOrNull(selectedTab)
 
     MaterialTheme {
-        Box(Modifier.fillMaxSize().background(Background)) {
-            AmbientBackdrop(focused)
+        val rootBackground = if (background == BackgroundStyle.ACCENT_GRADIENT) {
+            Modifier.background(
+                Brush.verticalGradient(listOf(LocalAccent.current.copy(alpha = 0.35f), Background))
+            )
+        } else {
+            Modifier.background(Background)
+        }
+        Box(Modifier.fillMaxSize().then(rootBackground)) {
+            if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, onSettings) { selectedTab = it; focused = null }
                 Hero(focused, tab?.shortcuts.orEmpty())

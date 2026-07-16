@@ -13,6 +13,7 @@ import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.compose.TopBarClock
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.AccentColor
+import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetSize
@@ -69,6 +70,7 @@ class LauncherActivity : ComponentActivity() {
     private var clockShowSeconds by mutableStateOf(true)
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
+    private var background by mutableStateOf(BackgroundStyle.AMBIENT)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +80,7 @@ class LauncherActivity : ComponentActivity() {
         clockShowSeconds = settings.clockShowSeconds()
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
+        background = settings.background()
         widgetSlot.onChanged = { refreshWidgets() }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -93,6 +96,7 @@ class LauncherActivity : ComponentActivity() {
                         tabs = tabs,
                         widgets = widgets,
                         clock = rememberTopBarClock(clockShowSeconds, clockShowDate, showGreeting),
+                        background = background,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
@@ -224,6 +228,23 @@ class LauncherActivity : ComponentActivity() {
             items = listOf(
                 MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
                 MenuItem(getString(R.string.action_clock)) { showClockMenu() },
+                MenuItem(getString(R.string.action_background)) { showBackgroundMenu() },
+            ),
+        )
+    }
+
+    private fun showBackgroundMenu() {
+        fun choice(label: Int, style: BackgroundStyle) = MenuItem(getString(label)) {
+            menu = null
+            settings.setBackground(style)
+            background = style
+        }
+        menu = MenuSpec(
+            title = getString(R.string.action_background),
+            items = listOf(
+                choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
+                choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
+                choice(R.string.background_solid, BackgroundStyle.SOLID),
             ),
         )
     }

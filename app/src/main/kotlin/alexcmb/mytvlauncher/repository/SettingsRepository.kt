@@ -13,6 +13,18 @@ enum class AccentColor(val argb: Long) {
     BLUE(0xFF378ADD),
 }
 
+/** What fills the home screen behind everything. */
+enum class BackgroundStyle {
+    /** Plain dark. */
+    SOLID,
+
+    /** The focused app's banner, dimmed. */
+    AMBIENT,
+
+    /** A dark gradient tinted with the accent colour. */
+    ACCENT_GRADIENT,
+}
+
 /** User appearance preferences. */
 class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
@@ -20,6 +32,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_CLOCK_SECONDS = "clock_seconds"
         private const val KEY_CLOCK_DATE = "clock_date"
         private const val KEY_GREETING = "greeting"
+        private const val KEY_BACKGROUND = "background"
     }
 
     private val sharedPreferences = context.getSharedPreferences("settings", 0)
@@ -46,4 +59,12 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setShowGreeting(show: Boolean) =
         sharedPreferences.edit().putBoolean(KEY_GREETING, show).apply()
+
+    fun background(): BackgroundStyle =
+        sharedPreferences.getString(KEY_BACKGROUND, null)
+            ?.let { runCatching { BackgroundStyle.valueOf(it) }.getOrNull() }
+            ?: BackgroundStyle.AMBIENT
+
+    fun setBackground(style: BackgroundStyle) =
+        sharedPreferences.edit().putString(KEY_BACKGROUND, style.name).apply()
 }

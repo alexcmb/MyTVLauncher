@@ -9,6 +9,10 @@
     <string name="action_settings">Paramètres</string>
     <string name="action_appearance">Apparence</string>
     <string name="action_clock">Horloge</string>
+    <string name="action_background">Fond</string>
+    <string name="background_ambient">Bannière ambiante</string>
+    <string name="background_gradient">Dégradé d\'accent</string>
+    <string name="background_solid">Uni</string>
     <string name="clock_seconds">Secondes</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Salutation</string>
