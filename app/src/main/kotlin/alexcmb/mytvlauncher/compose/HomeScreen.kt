@@ -5,6 +5,8 @@ import alexcmb.mytvlauncher.model.Shortcut
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,10 +44,13 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
@@ -189,10 +194,31 @@ private fun Hub(
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
 ) {
+    // As focus moves down to the apps, the widgets slide up and fade and the app cards
+    // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
+    // so moving back up returns to them and expands the band again.
+    var appsFocused by remember { mutableStateOf(false) }
+    val collapse by animateFloatAsState(
+        targetValue = if (appsFocused && widgets.isNotEmpty()) 1f else 0f,
+        animationSpec = tween(durationMillis = 260),
+        label = "collapse",
+    )
+    val density = LocalDensity.current
+    val bandRisePx = remember(widgets) {
+        if (widgets.isEmpty()) 0f else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
+    }
+    val cardWidth = lerp(150.dp, 210.dp, collapse)
+
     Column(Modifier.padding(start = 48.dp, end = 48.dp).focusGroup()) {
         if (widgets.isNotEmpty()) {
             Row(
-                modifier = Modifier.padding(bottom = 24.dp),
+                modifier = Modifier
+                    .onFocusChanged { if (it.hasFocus) appsFocused = false }
+                    .graphicsLayer {
+                        alpha = 1f - collapse
+                        translationY = -collapse * bandRisePx
+                    }
+                    .padding(bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 widgets.forEach { tile ->
@@ -210,15 +236,22 @@ private fun Hub(
             }
         }
         if (favourites.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.home_most_used),
-                color = Muted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(favourites, key = { it.id }) { shortcut ->
-                    AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(150.dp))
+            Column(
+                modifier = Modifier
+                    .onFocusChanged { if (it.hasFocus) appsFocused = true }
+                    // Rise into the space the widgets vacate, so they read as pushed off top.
+                    .graphicsLayer { translationY = -collapse * bandRisePx },
+            ) {
+                Text(
+                    text = stringResource(R.string.home_most_used),
+                    color = Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    items(favourites, key = { it.id }) { shortcut ->
+                        AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
+                    }
                 }
             }
         }
