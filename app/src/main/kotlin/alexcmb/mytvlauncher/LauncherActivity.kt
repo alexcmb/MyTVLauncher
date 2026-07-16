@@ -25,6 +25,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -131,10 +133,20 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
+    // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return
+    // to Home was what made the tab change hitch. Keyed by id, invalidated on a size change.
+    private val hostViews = HashMap<Int, Pair<WidgetSize, View>>()
+
     private fun refreshWidgets() {
-        widgets = widgetSlot.hostedForDisplay().map { hosted ->
-            WidgetTile(hosted.id, hosted.size.widthDp, hosted.size.heightDp) {
-                widgetSlot.createHostView(hosted)
+        val hosted = widgetSlot.hostedForDisplay()
+        hostViews.keys.retainAll(hosted.map { it.id }.toSet())
+        widgets = hosted.map { h ->
+            WidgetTile(h.id, h.size.widthDp, h.size.heightDp) {
+                val cached = hostViews[h.id]?.takeIf { it.first == h.size }?.second
+                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = h.size to it }
+                // It may still be attached to the AndroidView from the previous visit.
+                (view.parent as? ViewGroup)?.removeView(view)
+                view
             }
         }
     }
