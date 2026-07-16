@@ -40,6 +40,7 @@ data class MenuSpec(val title: String, val items: List<MenuItem>)
 
 private val Panel = Color(0xF0202020)
 private val Accent = Color(0xFF3D5AFE)
+private val Muted = Color(0xFF9AA0B4)
 
 /**
  * A menu over the home screen: scrim, dark panel, focusable rows. Back closes it, and the
@@ -70,16 +71,16 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 360.dp)
+                .widthIn(min = 260.dp, max = 380.dp)
                 .heightIn(max = 480.dp)
                 .background(Panel, RoundedCornerShape(12.dp))
-                .padding(24.dp),
+                .padding(vertical = 16.dp, horizontal = 12.dp),
         ) {
             Text(
                 text = spec.title,
-                color = Color.White,
-                fontSize = 20.sp,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                color = Muted,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 10.dp),
             )
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 spec.items.forEachIndexed { index, item ->
@@ -100,10 +101,10 @@ private fun MenuRow(item: MenuItem, modifier: Modifier) {
             .clickable { item.onClick() }
             .background(
                 color = if (focused) Accent else Color.Transparent,
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(8.dp),
             )
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = 12.dp, vertical = 9.dp),
     ) {
-        Text(item.label, color = Color.White, fontSize = 18.sp)
+        Text(item.label, color = Color.White, fontSize = 15.sp)
     }
 }
