@@ -10,9 +10,6 @@ enum class WidgetSize(val widthDp: Int, val heightDp: Int) {
 /** A widget the launcher hosts, and the size the user gave it. */
 data class HostedWidget(val id: Int, val size: WidgetSize)
 
-/** A ready-to-embed widget: its host view and the size to give it. */
-data class DisplayWidget(val widthDp: Int, val heightDp: Int, val view: android.view.View)
-
 /** Serialises the hosted widgets; kept pure so the round-trip can be unit-tested. */
 object WidgetStorage {
     fun encode(widgets: List<HostedWidget>): String =

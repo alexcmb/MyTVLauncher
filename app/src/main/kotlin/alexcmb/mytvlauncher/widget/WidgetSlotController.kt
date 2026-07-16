@@ -29,9 +29,12 @@ class WidgetSlotController(private val activity: Activity) {
     private val host = AppWidgetHost(activity, HOST_ID)
     private val repository = WidgetRepository.getInstance(activity)
 
-    // The band belongs to the widgets page, which comes and goes as pages are switched.
+    // The band belongs to the Leanback widgets page, which comes and goes as pages switch.
     private var band: LinearLayout? = null
     private var emptyHint: View? = null
+
+    /** Notified whenever the hosted set changes, so the Compose UI can re-read it. */
+    var onChanged: (() -> Unit)? = null
 
     /**
      * The widget being bound/configured. Held here rather than read back from the
@@ -54,19 +57,24 @@ class WidgetSlotController(private val activity: Activity) {
         hosted.id to info.loadLabel(activity.packageManager)
     }
 
-    /** Host views for the stored widgets, ready to embed in Compose; drops stale ones. */
-    fun widgetsForDisplay(): List<DisplayWidget> = repository.query().mapNotNull { hosted ->
-        val info = appWidgetManager.getAppWidgetInfo(hosted.id)
-        if (info == null) {
+    /** The stored widgets to show, dropping any whose provider went away. */
+    fun hostedForDisplay(): List<HostedWidget> = repository.query().filter { hosted ->
+        val alive = appWidgetManager.getAppWidgetInfo(hosted.id) != null
+        if (!alive) {
             host.deleteAppWidgetId(hosted.id)
             repository.remove(hosted.id)
-            return@mapNotNull null
         }
+        alive
+    }
+
+    /** Builds one host view for a widget, sized; Compose owns its placement. */
+    fun createHostView(hosted: HostedWidget): View {
+        val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
         view.updateAppWidgetSize(
             null, hosted.size.widthDp, hosted.size.heightDp, hosted.size.widthDp, hosted.size.heightDp
         )
-        DisplayWidget(hosted.size.widthDp, hosted.size.heightDp, view)
+        return view
     }
 
     fun attachBand(band: LinearLayout, emptyHint: View) {
@@ -80,23 +88,26 @@ class WidgetSlotController(private val activity: Activity) {
         emptyHint = null
     }
 
-    /** Rebuilds the band from what's stored, dropping widgets whose provider went away. */
+    /** Drops widgets whose provider vanished, redraws the Leanback band if any, notifies Compose. */
     fun refresh() {
-        val band = band ?: return
-        band.removeAllViews()
         repository.query().forEach { hosted ->
-            val info = appWidgetManager.getAppWidgetInfo(hosted.id)
-            if (info == null) {
+            if (appWidgetManager.getAppWidgetInfo(hosted.id) == null) {
                 Log.w(TAG, "Provider for widget ${hosted.id} is gone; dropping it")
                 host.deleteAppWidgetId(hosted.id)
                 repository.remove(hosted.id)
-                return@forEach
             }
-            band.addView(createView(hosted, info))
         }
-        val empty = band.childCount == 0
-        band.visibility = if (empty) View.GONE else View.VISIBLE
-        emptyHint?.visibility = if (empty) View.VISIBLE else View.GONE
+        band?.let { band ->
+            band.removeAllViews()
+            repository.query().forEach { hosted ->
+                val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return@forEach
+                band.addView(createView(hosted, info))
+            }
+            val empty = band.childCount == 0
+            band.visibility = if (empty) View.GONE else View.VISIBLE
+            emptyHint?.visibility = if (empty) View.VISIBLE else View.GONE
+        }
+        onChanged?.invoke()
     }
 
     fun add(provider: AppWidgetProviderInfo) {

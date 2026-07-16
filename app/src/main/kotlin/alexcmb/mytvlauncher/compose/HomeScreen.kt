@@ -2,8 +2,8 @@ package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
-import alexcmb.mytvlauncher.widget.DisplayWidget
 import android.graphics.drawable.Drawable
+import android.view.View
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,11 +64,14 @@ private val Muted = Color(0xFF9AA0B4)
 private const val COLUMNS = 5
 private const val FAVOURITES = 8
 
+/** A widget to place on the hub: its size and a factory for its host view. */
+data class WidgetTile(val id: Int, val widthDp: Int, val heightDp: Int, val createView: () -> View)
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
     tabs: List<HomeTab>,
-    widgets: List<DisplayWidget>,
+    widgets: List<WidgetTile>,
     clock: String,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
@@ -178,7 +182,7 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>) {
 
 @Composable
 private fun Hub(
-    widgets: List<DisplayWidget>,
+    widgets: List<WidgetTile>,
     favourites: List<Shortcut>,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
@@ -190,11 +194,15 @@ private fun Hub(
                 modifier = Modifier.padding(bottom = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                widgets.forEach { widget ->
-                    AndroidView(
-                        factory = { widget.view },
-                        modifier = Modifier.size(widget.widthDp.dp, widget.heightDp.dp),
-                    )
+                widgets.forEach { tile ->
+                    // Key by size too: resizing gives a new node, so a fresh host view is
+                    // built at the new size instead of the cached one being reused.
+                    key(tile.id, tile.widthDp, tile.heightDp) {
+                        AndroidView(
+                            factory = { tile.createView() },
+                            modifier = Modifier.size(tile.widthDp.dp, tile.heightDp.dp),
+                        )
+                    }
                 }
             }
         }

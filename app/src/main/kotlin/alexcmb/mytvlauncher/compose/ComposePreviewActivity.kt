@@ -5,8 +5,9 @@ import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.update.UpdateManager
-import alexcmb.mytvlauncher.widget.DisplayWidget
+import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
+import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -50,16 +51,16 @@ class ComposePreviewActivity : ComponentActivity() {
 
     private var menu by mutableStateOf<MenuSpec?>(null)
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
+    private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
+        widgetSlot.onChanged = { refreshWidgets() }
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(groups, stringResource(R.string.title_home))
-            // Built once: the same host View can't be embedded twice, and widgets rarely change.
-            val widgets = remember { widgetSlot.widgetsForDisplay() }
             Box {
                 HomeScreen(
                     tabs = tabs,
@@ -85,11 +86,34 @@ class ComposePreviewActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         widgetSlot.startListening()
+        refreshWidgets()
     }
 
     override fun onStop() {
         super.onStop()
         widgetSlot.stopListening()
+    }
+
+    @Deprecated("The widget bind and configure flows are driven by the legacy result API")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val granted = resultCode == RESULT_OK
+        when (requestCode) {
+            WidgetSlotController.REQUEST_BIND -> widgetSlot.onBindResult(granted)
+            WidgetSlotController.REQUEST_CONFIGURE -> widgetSlot.onConfigureResult(granted)
+            WidgetSlotController.REQUEST_PICK -> widgetSlot.onPickResult(
+                granted, data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
+            )
+        }
+    }
+
+    private fun refreshWidgets() {
+        widgets = widgetSlot.hostedForDisplay().map { hosted ->
+            WidgetTile(hosted.id, hosted.size.widthDp, hosted.size.heightDp) {
+                widgetSlot.createHostView(hosted)
+            }
+        }
     }
 
     private fun showAppMenu(shortcut: Shortcut) {
@@ -148,7 +172,16 @@ class ComposePreviewActivity : ComponentActivity() {
                 menu = null
                 checkForUpdates()
             },
+            MenuItem(getString(R.string.widget_add)) { showWidgetPicker() },
         )
+        if (widgetSlot.hasWidgets()) {
+            items += MenuItem(getString(R.string.widget_resize)) {
+                pickHostedWidget(R.string.widget_resize, ::showSizeMenu)
+            }
+            items += MenuItem(getString(R.string.widget_remove)) {
+                pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
+            }
+        }
         val hidden = viewModel.hiddenApps
         if (hidden.isNotEmpty()) {
             items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
@@ -156,6 +189,55 @@ class ComposePreviewActivity : ComponentActivity() {
             }
         }
         menu = MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    /** Android TV ships no widget picker, so build one from the installed providers. */
+    private fun showWidgetPicker() {
+        val providers = widgetSlot.availableProviders()
+        if (providers.isEmpty()) {
+            menu = null
+            toast(R.string.widget_none_available)
+            return
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_add),
+            items = providers.map { provider ->
+                MenuItem(provider.loadLabel(packageManager).toString()) {
+                    menu = null
+                    widgetSlot.add(provider)
+                }
+            },
+        )
+    }
+
+    /** Picks which hosted widget to act on, skipping the question when there's only one. */
+    private fun pickHostedWidget(@StringRes title: Int, action: (Int) -> Unit) {
+        val hosted = widgetSlot.hostedWidgets()
+        when (hosted.size) {
+            0 -> menu = null
+            1 -> action(hosted.first().first)
+            else -> menu = MenuSpec(
+                title = getString(title),
+                items = hosted.map { (id, label) -> MenuItem(label.toString()) { action(id) } },
+            )
+        }
+    }
+
+    private fun showSizeMenu(id: Int) {
+        menu = MenuSpec(
+            title = getString(R.string.widget_resize),
+            items = listOf(
+                MenuItem(getString(R.string.widget_size_small)) {
+                    menu = null; widgetSlot.resize(id, WidgetSize.SMALL)
+                },
+                MenuItem(getString(R.string.widget_size_medium)) {
+                    menu = null; widgetSlot.resize(id, WidgetSize.MEDIUM)
+                },
+                MenuItem(getString(R.string.widget_size_large)) {
+                    menu = null; widgetSlot.resize(id, WidgetSize.LARGE)
+                },
+            ),
+        )
     }
 
     private fun showHiddenAppsMenu() {
