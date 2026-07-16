@@ -72,12 +72,15 @@ private const val FAVOURITES = 8
 /** A widget to place on the hub: its size and a factory for its host view. */
 data class WidgetTile(val id: Int, val widthDp: Int, val heightDp: Int, val createView: () -> View)
 
+/** What the title bar shows on the left: a live clock, plus optional greeting and date. */
+data class TopBarClock(val time: String, val date: String?, val greeting: String?)
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun HomeScreen(
     tabs: List<HomeTab>,
     widgets: List<WidgetTile>,
-    clock: String,
+    clock: TopBarClock,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onSettings: () -> Unit,
@@ -115,7 +118,7 @@ fun HomeScreen(
 private fun TopBar(
     tabs: List<HomeTab>,
     selected: Int,
-    clock: String,
+    clock: TopBarClock,
     onSettings: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -123,7 +126,11 @@ private fun TopBar(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(clock, color = Color.White, fontSize = 15.sp)
+        Column {
+            clock.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
+            Text(clock.time, color = Color.White, fontSize = 20.sp)
+            clock.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
+        }
         Spacer(Modifier.width(28.dp))
         // Left-aligned so a tab sits directly above the content — that alignment is what
         // lets DPAD-up out of the grid land back on the tabs.

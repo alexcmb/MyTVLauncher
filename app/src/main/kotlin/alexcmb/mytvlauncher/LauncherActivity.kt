@@ -10,6 +10,7 @@ import alexcmb.mytvlauncher.compose.TvMenu
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.LocalAccent
+import alexcmb.mytvlauncher.compose.TopBarClock
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.SettingsRepository
@@ -45,6 +46,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -64,12 +66,18 @@ class LauncherActivity : ComponentActivity() {
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
     private var accent by mutableStateOf(AccentColor.INDIGO)
+    private var clockShowSeconds by mutableStateOf(true)
+    private var clockShowDate by mutableStateOf(false)
+    private var showGreeting by mutableStateOf(true)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         accent = settings.accent()
+        clockShowSeconds = settings.clockShowSeconds()
+        clockShowDate = settings.clockShowDate()
+        showGreeting = settings.showGreeting()
         widgetSlot.onChanged = { refreshWidgets() }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -84,7 +92,7 @@ class LauncherActivity : ComponentActivity() {
                     HomeScreen(
                         tabs = tabs,
                         widgets = widgets,
-                        clock = rememberClock(),
+                        clock = rememberTopBarClock(clockShowSeconds, clockShowDate, showGreeting),
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
@@ -182,7 +190,7 @@ class LauncherActivity : ComponentActivity() {
 
     private fun showSettingsMenu() {
         val items = mutableListOf(
-            MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
+            MenuItem(getString(R.string.action_appearance)) { showAppearanceMenu() },
             MenuItem(getString(R.string.action_android_settings)) {
                 menu = null
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
@@ -208,6 +216,39 @@ class LauncherActivity : ComponentActivity() {
             }
         }
         menu = MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    private fun showAppearanceMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_appearance),
+            items = listOf(
+                MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
+                MenuItem(getString(R.string.action_clock)) { showClockMenu() },
+            ),
+        )
+    }
+
+    private fun showClockMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_clock),
+            items = listOf(
+                toggleItem(R.string.clock_seconds, clockShowSeconds) {
+                    settings.setClockShowSeconds(it); clockShowSeconds = it; showClockMenu()
+                },
+                toggleItem(R.string.clock_date, clockShowDate) {
+                    settings.setClockShowDate(it); clockShowDate = it; showClockMenu()
+                },
+                toggleItem(R.string.clock_greeting, showGreeting) {
+                    settings.setShowGreeting(it); showGreeting = it; showClockMenu()
+                },
+            ),
+        )
+    }
+
+    /** A menu row that shows its on/off state and flips it, leaving the menu open. */
+    private fun toggleItem(@StringRes label: Int, value: Boolean, onToggle: (Boolean) -> Unit): MenuItem {
+        val state = getString(if (value) R.string.state_on else R.string.state_off)
+        return MenuItem("${getString(label)}  ·  $state") { onToggle(!value) }
     }
 
     private fun showAccentMenu() {
@@ -361,24 +402,46 @@ class LauncherActivity : ComponentActivity() {
     }
 }
 
-/** Re-aligns on the whole second so the clock doesn't drift. */
+/** The live title-bar clock; re-aligns on the whole second so it doesn't drift. */
 @Composable
-private fun rememberClock(): String {
+private fun rememberTopBarClock(
+    showSeconds: Boolean,
+    showDate: Boolean,
+    showGreeting: Boolean,
+): TopBarClock {
     val context = LocalContext.current
-    val format = remember(context) {
-        // Locale-aware, honours the system 12/24h setting, and always includes seconds.
-        val skeleton =
-            if (android.text.format.DateFormat.is24HourFormat(context)) "Hms" else "hms"
+    val locale = Locale.getDefault()
+    val timeFormat = remember(context, showSeconds) {
+        // Locale-aware, honours the system 12/24h setting.
+        val is24 = android.text.format.DateFormat.is24HourFormat(context)
+        val skeleton = (if (is24) "Hm" else "hm") + (if (showSeconds) "s" else "")
         SimpleDateFormat(
-            android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton),
-            Locale.getDefault(),
+            android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton), locale
         )
     }
-    val time by produceState(initialValue = format.format(Date())) {
+    val dateFormat = remember(locale) {
+        SimpleDateFormat(
+            android.text.format.DateFormat.getBestDateTimePattern(locale, "EEEEdMMMM"), locale
+        )
+    }
+    val now by produceState(initialValue = Date()) {
         while (true) {
             delay(1000 - System.currentTimeMillis() % 1000)
-            value = format.format(Date())
+            value = Date()
         }
     }
-    return time
+    return TopBarClock(
+        time = timeFormat.format(now),
+        date = if (showDate) dateFormat.format(now).replaceFirstChar { it.uppercase(locale) } else null,
+        greeting = if (showGreeting) stringResource(greetingRes(now)) else null,
+    )
+}
+
+private fun greetingRes(now: Date): Int {
+    val hour = Calendar.getInstance().apply { time = now }.get(Calendar.HOUR_OF_DAY)
+    return when (hour) {
+        in 5..11 -> R.string.greeting_morning
+        in 12..17 -> R.string.greeting_afternoon
+        else -> R.string.greeting_evening
+    }
 }

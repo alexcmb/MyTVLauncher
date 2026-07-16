@@ -7,6 +7,16 @@
     <string name="home_opens_ranked">Ouverte %1$d fois · n°%2$d ici</string>
     <string name="home_never_opened">Jamais ouverte</string>
     <string name="action_settings">Paramètres</string>
+    <string name="action_appearance">Apparence</string>
+    <string name="action_clock">Horloge</string>
+    <string name="clock_seconds">Secondes</string>
+    <string name="clock_date">Date</string>
+    <string name="clock_greeting">Salutation</string>
+    <string name="state_on">Activé</string>
+    <string name="state_off">Désactivé</string>
+    <string name="greeting_morning">Bonjour</string>
+    <string name="greeting_afternoon">Bon après-midi</string>
+    <string name="greeting_evening">Bonsoir</string>
     <string name="action_accent">Couleur d\'accent</string>
     <string name="accent_indigo">Indigo</string>
     <string name="accent_teal">Turquoise</string>

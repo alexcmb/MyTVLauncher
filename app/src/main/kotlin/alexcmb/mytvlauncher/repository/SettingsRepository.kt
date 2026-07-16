@@ -17,6 +17,9 @@ enum class AccentColor(val argb: Long) {
 class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
         private const val KEY_ACCENT = "accent"
+        private const val KEY_CLOCK_SECONDS = "clock_seconds"
+        private const val KEY_CLOCK_DATE = "clock_date"
+        private const val KEY_GREETING = "greeting"
     }
 
     private val sharedPreferences = context.getSharedPreferences("settings", 0)
@@ -28,4 +31,19 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setAccent(accent: AccentColor) =
         sharedPreferences.edit().putString(KEY_ACCENT, accent.name).apply()
+
+    fun clockShowSeconds(): Boolean = sharedPreferences.getBoolean(KEY_CLOCK_SECONDS, true)
+
+    fun setClockShowSeconds(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_CLOCK_SECONDS, show).apply()
+
+    fun clockShowDate(): Boolean = sharedPreferences.getBoolean(KEY_CLOCK_DATE, false)
+
+    fun setClockShowDate(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_CLOCK_DATE, show).apply()
+
+    fun showGreeting(): Boolean = sharedPreferences.getBoolean(KEY_GREETING, true)
+
+    fun setShowGreeting(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_GREETING, show).apply()
 }
