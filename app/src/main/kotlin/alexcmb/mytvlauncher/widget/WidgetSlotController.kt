@@ -11,12 +11,12 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.util.Log
 import android.view.View
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.annotation.StringRes
 
 /**
- * Hosts the launcher's app widgets in a fixed band.
+ * Hosts the launcher's app widgets. Compose owns their placement; this owns the
+ * AppWidgetHost, the store and the binding.
  *
  * Binding is the hard part. BIND_APPWIDGET is signature|privileged, so no third-party
  * launcher can hold it; the usual escape hatch is a consent screen in Settings that
@@ -28,10 +28,6 @@ class WidgetSlotController(private val activity: Activity) {
     private val appWidgetManager = AppWidgetManager.getInstance(activity)
     private val host = AppWidgetHost(activity, HOST_ID)
     private val repository = WidgetRepository.getInstance(activity)
-
-    // The band belongs to the Leanback widgets page, which comes and goes as pages switch.
-    private var band: LinearLayout? = null
-    private var emptyHint: View? = null
 
     /** Notified whenever the hosted set changes, so the Compose UI can re-read it. */
     var onChanged: (() -> Unit)? = null
@@ -77,18 +73,7 @@ class WidgetSlotController(private val activity: Activity) {
         return view
     }
 
-    fun attachBand(band: LinearLayout, emptyHint: View) {
-        this.band = band
-        this.emptyHint = emptyHint
-        refresh()
-    }
-
-    fun detachBand() {
-        band = null
-        emptyHint = null
-    }
-
-    /** Drops widgets whose provider vanished, redraws the Leanback band if any, notifies Compose. */
+    /** Drops widgets whose provider vanished, then notifies Compose to re-read. */
     fun refresh() {
         repository.query().forEach { hosted ->
             if (appWidgetManager.getAppWidgetInfo(hosted.id) == null) {
@@ -96,16 +81,6 @@ class WidgetSlotController(private val activity: Activity) {
                 host.deleteAppWidgetId(hosted.id)
                 repository.remove(hosted.id)
             }
-        }
-        band?.let { band ->
-            band.removeAllViews()
-            repository.query().forEach { hosted ->
-                val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return@forEach
-                band.addView(createView(hosted, info))
-            }
-            val empty = band.childCount == 0
-            band.visibility = if (empty) View.GONE else View.VISIBLE
-            emptyHint?.visibility = if (empty) View.VISIBLE else View.GONE
         }
         onChanged?.invoke()
     }
@@ -163,20 +138,6 @@ class WidgetSlotController(private val activity: Activity) {
         if (id == NO_WIDGET) return
         if (configured && appWidgetManager.getAppWidgetInfo(id) != null) keep(id)
         else abandon(id, R.string.widget_configure_failed)
-    }
-
-    private fun createView(hosted: HostedWidget, info: AppWidgetProviderInfo): View {
-        val view = host.createView(activity, hosted.id, info)
-        val density = activity.resources.displayMetrics.density
-        view.layoutParams = LinearLayout.LayoutParams(
-            (hosted.size.widthDp * density).toInt(),
-            (hosted.size.heightDp * density).toInt()
-        ).apply { rightMargin = (WIDGET_GAP_DP * density).toInt() }
-        view.updateAppWidgetSize(
-            null, hosted.size.widthDp, hosted.size.heightDp, hosted.size.widthDp,
-            hosted.size.heightDp
-        )
-        return view
     }
 
     private fun configureOrShow(id: Int) {
@@ -251,7 +212,6 @@ class WidgetSlotController(private val activity: Activity) {
         private const val TAG = "WidgetSlotController"
         private const val HOST_ID = 1024
         private const val NO_WIDGET = -1
-        private const val WIDGET_GAP_DP = 16
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002
         const val REQUEST_PICK = 1003

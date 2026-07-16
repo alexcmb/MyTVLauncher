@@ -27,7 +27,6 @@ android {
         }
     }
     buildFeatures {
-        viewBinding = true
         compose = true
     }
     buildTypes {
@@ -60,9 +59,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("androidx.leanback:leanback:1.0.0")
 
-    // Compose for TV, currently only behind the "Preview new UI" spike screen.
+    // Compose for TV — the whole UI.
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime-livedata")

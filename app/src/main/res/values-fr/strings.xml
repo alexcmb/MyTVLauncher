@@ -1,17 +1,14 @@
 <resources>
     <string name="title_apps">Applications</string>
     <string name="title_system">Système</string>
-    <string name="title_widgets">Widgets</string>
     <string name="title_home">Accueil</string>
     <string name="home_most_used">Les plus utilisées</string>
     <string name="home_opens_top">Ouverte %1$d fois · votre plus utilisée</string>
     <string name="home_opens_ranked">Ouverte %1$d fois · n°%2$d ici</string>
     <string name="home_never_opened">Jamais ouverte</string>
-    <string name="widget_empty_hint">Aucun widget — ajoutez-en un dans les Paramètres.</string>
     <string name="action_settings">Paramètres</string>
     <string name="action_android_settings">Paramètres Android</string>
     <string name="action_check_updates">Rechercher des mises à jour</string>
-    <string name="action_preview_new_ui">Aperçu de la nouvelle interface</string>
     <string name="widget_add">Ajouter un widget</string>
     <string name="widget_remove">Retirer un widget</string>
     <string name="widget_resize">Redimensionner</string>
