@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -200,7 +201,9 @@ private fun Hub(
                     key(tile.id, tile.widthDp, tile.heightDp) {
                         AndroidView(
                             factory = { tile.createView() },
-                            modifier = Modifier.size(tile.widthDp.dp, tile.heightDp.dp),
+                            // Clip: some widgets draw past the size they're handed.
+                            modifier = Modifier.size(tile.widthDp.dp, tile.heightDp.dp)
+                                .clipToBounds(),
                         )
                     }
                 }
