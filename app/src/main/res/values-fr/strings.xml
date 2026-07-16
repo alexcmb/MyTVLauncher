@@ -23,6 +23,7 @@
     <string name="greeting_afternoon">Bon après-midi</string>
     <string name="greeting_evening">Bonsoir</string>
     <string name="action_accent">Couleur d\'accent</string>
+    <string name="accent_auto">Auto (selon l\'app active)</string>
     <string name="accent_indigo">Indigo</string>
     <string name="accent_teal">Turquoise</string>
     <string name="accent_coral">Corail</string>
@@ -34,9 +35,16 @@
     <string name="widget_add">Ajouter un widget</string>
     <string name="widget_remove">Retirer un widget</string>
     <string name="widget_resize">Redimensionner</string>
+    <string name="widget_align">Emplacement du widget</string>
+    <string name="widget_align_start">Gauche</string>
+    <string name="widget_align_center">Milieu</string>
+    <string name="widget_align_end">Droite</string>
+    <string name="widget_limit_reached">Vous pouvez héberger jusqu\'à %1$d widgets</string>
+    <string name="widget_size_xsmall">Très petit</string>
     <string name="widget_size_small">Petit</string>
     <string name="widget_size_medium">Moyen</string>
     <string name="widget_size_large">Grand</string>
+    <string name="widget_size_xlarge">Très grand</string>
     <string name="widget_none_available">Aucun widget disponible sur cet appareil</string>
     <string name="widget_bind_refused">Widget non autorisé</string>
     <string name="widget_configure_failed">Configuration du widget annulée</string>

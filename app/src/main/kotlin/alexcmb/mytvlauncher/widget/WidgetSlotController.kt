@@ -44,6 +44,9 @@ class WidgetSlotController(private val activity: Activity) {
 
     fun hasWidgets(): Boolean = repository.query().isNotEmpty()
 
+    /** Room for another widget? The band is deliberately capped so it stays a dashboard. */
+    fun canAddMore(): Boolean = repository.query().size < MAX_WIDGETS
+
     /** Providers installed on the device; empty on a TV with no phone apps sideloaded. */
     fun availableProviders(): List<AppWidgetProviderInfo> = appWidgetManager.installedProviders
 
@@ -86,6 +89,14 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     fun add(provider: AppWidgetProviderInfo) {
+        if (!canAddMore()) {
+            Toast.makeText(
+                activity,
+                activity.getString(R.string.widget_limit_reached, MAX_WIDGETS),
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
         val id = host.allocateAppWidgetId()
         pendingId = id
         if (appWidgetManager.bindAppWidgetIdIfAllowed(id, provider.provider)) {
@@ -112,6 +123,11 @@ class WidgetSlotController(private val activity: Activity) {
 
     fun resize(id: Int, size: WidgetSize) {
         repository.updateSize(id, size)
+        refresh()
+    }
+
+    fun align(id: Int, alignment: WidgetAlignment) {
+        repository.updateAlignment(id, alignment)
         refresh()
     }
 
@@ -211,6 +227,8 @@ class WidgetSlotController(private val activity: Activity) {
     companion object {
         private const val TAG = "WidgetSlotController"
         private const val HOST_ID = 1024
+        /** The band is a dashboard, not a wall: keep it to a handful. */
+        const val MAX_WIDGETS = 3
         private const val NO_WIDGET = -1
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002

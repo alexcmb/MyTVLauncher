@@ -24,6 +24,7 @@
     <string name="greeting_afternoon">Good afternoon</string>
     <string name="greeting_evening">Good evening</string>
     <string name="action_accent">Accent colour</string>
+    <string name="accent_auto">Auto (from focused app)</string>
     <string name="accent_indigo">Indigo</string>
     <string name="accent_teal">Teal</string>
     <string name="accent_coral">Coral</string>
@@ -35,9 +36,16 @@
     <string name="widget_add">Add widget</string>
     <string name="widget_remove">Remove widget</string>
     <string name="widget_resize">Resize widget</string>
+    <string name="widget_align">Widget placement</string>
+    <string name="widget_align_start">Left</string>
+    <string name="widget_align_center">Centre</string>
+    <string name="widget_align_end">Right</string>
+    <string name="widget_limit_reached">You can host up to %1$d widgets</string>
+    <string name="widget_size_xsmall">Extra small</string>
     <string name="widget_size_small">Small</string>
     <string name="widget_size_medium">Medium</string>
     <string name="widget_size_large">Large</string>
+    <string name="widget_size_xlarge">Extra large</string>
     <string name="widget_none_available">No widgets available on this device</string>
     <string name="widget_bind_refused">Widget was not allowed</string>
     <string name="widget_configure_failed">Widget setup was cancelled</string>

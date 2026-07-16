@@ -59,6 +59,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Extracts the accent colour from a focused app's banner (the "auto" accent).
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Compose for TV — the whole UI.
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

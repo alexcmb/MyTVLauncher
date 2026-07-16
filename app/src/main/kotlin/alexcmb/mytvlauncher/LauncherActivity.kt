@@ -17,6 +17,7 @@ import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.widget.WidgetAlignment
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
 import android.appwidget.AppWidgetManager
@@ -61,6 +62,7 @@ class LauncherActivity : ComponentActivity() {
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
     private var accent by mutableStateOf(AccentColor.INDIGO)
+    private var accentAuto by mutableStateOf(false)
     private var clockShowSeconds by mutableStateOf(true)
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
@@ -72,6 +74,7 @@ class LauncherActivity : ComponentActivity() {
         val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         accent = settings.accent()
+        accentAuto = settings.accentAuto()
         clockShowSeconds = settings.clockShowSeconds()
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
@@ -94,6 +97,7 @@ class LauncherActivity : ComponentActivity() {
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
                         cardSize = cardSize,
+                        accentAuto = accentAuto,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
@@ -145,7 +149,7 @@ class LauncherActivity : ComponentActivity() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
         widgets = hosted.map { h ->
-            WidgetTile(h.id, h.size.widthDp, h.size.heightDp) {
+            WidgetTile(h.id, h.size.widthDp, h.size.heightDp, h.alignment) {
                 val cached = hostViews[h.id]?.takeIf { it.first == h.size }?.second
                 val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = h.size to it }
                 // It may still be attached to the AndroidView from the previous visit.
@@ -210,11 +214,17 @@ class LauncherActivity : ComponentActivity() {
                 menu = null
                 checkForUpdates()
             },
-            MenuItem(getString(R.string.widget_add)) { showWidgetPicker() },
         )
+        // The band is capped, so only offer "add" while there's room for another.
+        if (widgetSlot.canAddMore()) {
+            items += MenuItem(getString(R.string.widget_add)) { showWidgetPicker() }
+        }
         if (widgetSlot.hasWidgets()) {
             items += MenuItem(getString(R.string.widget_resize)) {
                 pickHostedWidget(R.string.widget_resize, ::showSizeMenu)
+            }
+            items += MenuItem(getString(R.string.widget_align)) {
+                pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
             }
             items += MenuItem(getString(R.string.widget_remove)) {
                 pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
@@ -297,11 +307,18 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun showAccentMenu() {
+        val auto = MenuItem(getString(R.string.accent_auto)) {
+            menu = null
+            settings.setAccentAuto(true)
+            accentAuto = true
+        }
         menu = MenuSpec(
             title = getString(R.string.action_accent),
-            items = AccentColor.entries.map { colour ->
+            items = listOf(auto) + AccentColor.entries.map { colour ->
                 MenuItem(accentName(colour), swatch = Color(colour.argb)) {
                     menu = null
+                    settings.setAccentAuto(false)
+                    accentAuto = false
                     settings.setAccent(colour)
                     accent = colour
                 }
@@ -353,18 +370,33 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun showSizeMenu(id: Int) {
+        fun choice(label: Int, size: WidgetSize) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.resize(id, size)
+        }
         menu = MenuSpec(
             title = getString(R.string.widget_resize),
             items = listOf(
-                MenuItem(getString(R.string.widget_size_small)) {
-                    menu = null; widgetSlot.resize(id, WidgetSize.SMALL)
-                },
-                MenuItem(getString(R.string.widget_size_medium)) {
-                    menu = null; widgetSlot.resize(id, WidgetSize.MEDIUM)
-                },
-                MenuItem(getString(R.string.widget_size_large)) {
-                    menu = null; widgetSlot.resize(id, WidgetSize.LARGE)
-                },
+                choice(R.string.widget_size_xsmall, WidgetSize.XSMALL),
+                choice(R.string.widget_size_small, WidgetSize.SMALL),
+                choice(R.string.widget_size_medium, WidgetSize.MEDIUM),
+                choice(R.string.widget_size_large, WidgetSize.LARGE),
+                choice(R.string.widget_size_xlarge, WidgetSize.XLARGE),
+            ),
+        )
+    }
+
+    private fun showAlignmentMenu(id: Int) {
+        fun choice(label: Int, alignment: WidgetAlignment) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.align(id, alignment)
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_align),
+            items = listOf(
+                choice(R.string.widget_align_start, WidgetAlignment.START),
+                choice(R.string.widget_align_center, WidgetAlignment.CENTER),
+                choice(R.string.widget_align_end, WidgetAlignment.END),
             ),
         )
     }

@@ -46,4 +46,30 @@ class WidgetStorageTest {
             WidgetStorage.decode("4:SMALL,rubbish,6:LARGE")
         )
     }
+
+    @Test
+    fun `round-trips the alignment`() {
+        val widgets = listOf(
+            HostedWidget(1, WidgetSize.SMALL, WidgetAlignment.START),
+            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.CENTER),
+            HostedWidget(3, WidgetSize.LARGE, WidgetAlignment.END),
+        )
+        assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
+    }
+
+    @Test
+    fun `defaults to start alignment for entries stored before it existed`() {
+        assertEquals(
+            listOf(HostedWidget(4, WidgetSize.SMALL, WidgetAlignment.START)),
+            WidgetStorage.decode("4:SMALL")
+        )
+    }
+
+    @Test
+    fun `falls back to start when the alignment is unreadable`() {
+        assertEquals(
+            listOf(HostedWidget(5, WidgetSize.LARGE, WidgetAlignment.START)),
+            WidgetStorage.decode("5:LARGE:SIDEWAYS")
+        )
+    }
 }

@@ -36,6 +36,7 @@ enum class BackgroundStyle {
 class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
         private const val KEY_ACCENT = "accent"
+        private const val KEY_ACCENT_AUTO = "accent_auto"
         private const val KEY_CLOCK_SECONDS = "clock_seconds"
         private const val KEY_CLOCK_DATE = "clock_date"
         private const val KEY_GREETING = "greeting"
@@ -52,6 +53,12 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setAccent(accent: AccentColor) =
         sharedPreferences.edit().putString(KEY_ACCENT, accent.name).apply()
+
+    /** When on, the accent tracks the focused app's banner; the fixed [accent] is the base. */
+    fun accentAuto(): Boolean = sharedPreferences.getBoolean(KEY_ACCENT_AUTO, false)
+
+    fun setAccentAuto(auto: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_ACCENT_AUTO, auto).apply()
 
     fun clockShowSeconds(): Boolean = sharedPreferences.getBoolean(KEY_CLOCK_SECONDS, true)
 

@@ -4,9 +4,11 @@ import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
+import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -36,6 +38,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +63,10 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
+import androidx.palette.graphics.Palette
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -77,8 +83,14 @@ private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its size and a factory for its host view. */
-data class WidgetTile(val id: Int, val widthDp: Int, val heightDp: Int, val createView: () -> View)
+/** A widget to place on the hub: its size, where it sits, and a factory for its host view. */
+data class WidgetTile(
+    val id: Int,
+    val widthDp: Int,
+    val heightDp: Int,
+    val alignment: WidgetAlignment,
+    val createView: () -> View,
+)
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
 data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
@@ -94,6 +106,7 @@ fun HomeScreen(
     clock: ClockOptions,
     background: BackgroundStyle,
     cardSize: CardSize,
+    accentAuto: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onSettings: () -> Unit,
@@ -102,6 +115,12 @@ fun HomeScreen(
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
 
+    // The accent normally comes from the activity's fixed choice. In "auto" mode it tracks
+    // the focused app's banner; re-provided here since only this screen knows the focus.
+    val base = LocalAccent.current
+    val accent = if (accentAuto) rememberAutoAccent(focused, base) else base
+
+    CompositionLocalProvider(LocalAccent provides accent) {
     MaterialTheme {
         val rootBackground = if (background == BackgroundStyle.ACCENT_GRADIENT) {
             Modifier.background(
@@ -132,6 +151,7 @@ fun HomeScreen(
             }
         }
     }
+    }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
@@ -147,17 +167,11 @@ private fun TopBar(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Derived here so the once-a-second tick only recomposes the bar, not the screen.
-        val values = rememberClockValues(clock)
-        Column {
-            values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
-            Text(values.time, color = Color.White, fontSize = 20.sp)
-            values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
-        }
-        Spacer(Modifier.width(28.dp))
-        // Left-aligned so a tab sits directly above the content — that alignment is what
-        // lets DPAD-up out of the grid land back on the tabs. A hand-rolled row rather than
-        // tv-material's TabRow: its sliding indicator animation hitched on the tab change.
+        // Settings on the left; the clock on the right; the tabs centred between them.
+        SettingsOrb(onSettings)
+        Spacer(Modifier.weight(1f))
+        // A hand-rolled row rather than tv-material's TabRow: its sliding indicator
+        // animation hitched on the tab change.
         if (tabs.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 tabs.forEachIndexed { index, tab ->
@@ -166,7 +180,13 @@ private fun TopBar(
             }
         }
         Spacer(Modifier.weight(1f))
-        SettingsOrb(onSettings)
+        // Derived here so the once-a-second tick only recomposes the bar, not the screen.
+        val values = rememberClockValues(clock)
+        Column(horizontalAlignment = Alignment.End) {
+            values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
+            Text(values.time, color = Color.White, fontSize = 20.sp)
+            values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
+        }
     }
 }
 
@@ -271,6 +291,7 @@ private fun Hub(
         if (widgets.isNotEmpty()) {
             Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .onFocusChanged {
                         if (it.hasFocus) {
                             appsFocused = false
@@ -285,27 +306,16 @@ private fun Hub(
                         translationY = -collapse * bandRisePx
                     }
                     .padding(bottom = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                widgets.forEach { tile ->
-                    // Key by size too: resizing gives a new node, so a fresh host view is
-                    // built at the new size instead of the cached one being reused.
-                    key(tile.id, tile.widthDp, tile.heightDp) {
-                        // Spotlight: the focused widget stays lit, the others dim.
-                        val lit = focusedWidget == tile.id
-                        val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
-                        Box(
-                            modifier = Modifier
-                                .size(tile.widthDp.dp, tile.heightDp.dp)
-                                .onFocusChanged { if (it.hasFocus) focusedWidget = tile.id }
-                                .graphicsLayer { alpha = tileAlpha }
-                                // Clip: some widgets draw past the size they're handed.
-                                .clipToBounds(),
-                        ) {
-                            AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
-                        }
-                    }
-                }
+                // Three placement zones: left packed left, centre centred, right packed
+                // right — the weighted spacers absorb whatever space the zones don't use.
+                val onFocused = { id: Int -> focusedWidget = id }
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.START }, spotlight, focusedWidget, onFocused)
+                Spacer(Modifier.weight(1f))
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.CENTER }, spotlight, focusedWidget, onFocused)
+                Spacer(Modifier.weight(1f))
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.END }, spotlight, focusedWidget, onFocused)
             }
         }
         if (favourites.isNotEmpty()) {
@@ -328,6 +338,37 @@ private fun Hub(
                     items(favourites, key = { it.id }) { shortcut ->
                         AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
                     }
+                }
+            }
+        }
+    }
+}
+
+/** One placement zone of the band. Its widgets sit together; the spotlight dims the rest. */
+@Composable
+private fun WidgetZone(
+    tiles: List<WidgetTile>,
+    spotlight: Float,
+    focusedWidget: Int?,
+    onFocused: (Int) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        tiles.forEach { tile ->
+            // Key by size too: resizing gives a new node, so a fresh host view is
+            // built at the new size instead of the cached one being reused.
+            key(tile.id, tile.widthDp, tile.heightDp) {
+                // Spotlight: the focused widget stays lit, the others dim.
+                val lit = focusedWidget == tile.id
+                val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
+                Box(
+                    modifier = Modifier
+                        .size(tile.widthDp.dp, tile.heightDp.dp)
+                        .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
+                        .graphicsLayer { alpha = tileAlpha }
+                        // Clip: some widgets draw past the size they're handed.
+                        .clipToBounds(),
+                ) {
+                    AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -449,6 +490,30 @@ private fun greetingRes(now: Date): Int {
         in 12..17 -> R.string.greeting_afternoon
         else -> R.string.greeting_evening
     }
+}
+
+/**
+ * The "auto" accent: a colour pulled from the focused app's banner (or icon), eased in so
+ * moving between apps glides rather than snaps. Falls back to [fallback] — the fixed base
+ * accent — while nothing is focused or a banner yields no usable colour.
+ */
+@Composable
+private fun rememberAutoAccent(focused: Shortcut?, fallback: Color): Color {
+    val target by produceState(fallback, focused, fallback) {
+        val art = focused?.banner ?: focused?.icon
+        value = art?.let { paletteAccent(it) } ?: fallback
+    }
+    val accent by animateColorAsState(target, tween(durationMillis = 300), label = "accent")
+    return accent
+}
+
+/** Palette runs off the main thread; it down-samples internally, so this stays cheap. */
+private suspend fun paletteAccent(drawable: Drawable): Color? = withContext(Dispatchers.Default) {
+    runCatching {
+        val palette = Palette.Builder(drawable.toBitmap()).resizeBitmapArea(64 * 64).generate()
+        (palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.dominantSwatch)
+            ?.let { Color(it.rgb) }
+    }.getOrNull()
 }
 
 /**
