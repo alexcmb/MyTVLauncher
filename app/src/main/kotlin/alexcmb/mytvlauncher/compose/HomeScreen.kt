@@ -249,10 +249,17 @@ private fun Hub(
     // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
     // so moving back up returns to them and expands the band again.
     var appsFocused by remember { mutableStateOf(false) }
+    // Which widget holds focus, if any — drives the spotlight that dims everything else.
+    var focusedWidget by remember { mutableStateOf<Int?>(null) }
     val collapse by animateFloatAsState(
         targetValue = if (appsFocused && widgets.isNotEmpty()) 1f else 0f,
         animationSpec = tween(durationMillis = 260),
         label = "collapse",
+    )
+    val spotlight by animateFloatAsState(
+        targetValue = if (focusedWidget != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "spotlight",
     )
     val density = LocalDensity.current
     val bandRisePx = remember(widgets) {
@@ -269,6 +276,8 @@ private fun Hub(
                             appsFocused = false
                             // Widgets aren't apps: drop the app backdrop back to black.
                             onWidgetsFocused()
+                        } else {
+                            focusedWidget = null
                         }
                     }
                     .graphicsLayer {
@@ -282,12 +291,19 @@ private fun Hub(
                     // Key by size too: resizing gives a new node, so a fresh host view is
                     // built at the new size instead of the cached one being reused.
                     key(tile.id, tile.widthDp, tile.heightDp) {
-                        AndroidView(
-                            factory = { tile.createView() },
-                            // Clip: some widgets draw past the size they're handed.
-                            modifier = Modifier.size(tile.widthDp.dp, tile.heightDp.dp)
+                        // Spotlight: the focused widget stays lit, the others dim.
+                        val lit = focusedWidget == tile.id
+                        val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
+                        Box(
+                            modifier = Modifier
+                                .size(tile.widthDp.dp, tile.heightDp.dp)
+                                .onFocusChanged { if (it.hasFocus) focusedWidget = tile.id }
+                                .graphicsLayer { alpha = tileAlpha }
+                                // Clip: some widgets draw past the size they're handed.
                                 .clipToBounds(),
-                        )
+                        ) {
+                            AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
+                        }
                     }
                 }
             }
@@ -296,8 +312,11 @@ private fun Hub(
             Column(
                 modifier = Modifier
                     .onFocusChanged { if (it.hasFocus) appsFocused = true }
-                    // Rise into the space the widgets vacate, so they read as pushed off top.
-                    .graphicsLayer { translationY = -collapse * bandRisePx },
+                    // Rise into the space the widgets vacate; dim under the widget spotlight.
+                    .graphicsLayer {
+                        translationY = -collapse * bandRisePx
+                        alpha = 1f - 0.75f * spotlight
+                    },
             ) {
                 Text(
                     text = stringResource(R.string.home_most_used),
