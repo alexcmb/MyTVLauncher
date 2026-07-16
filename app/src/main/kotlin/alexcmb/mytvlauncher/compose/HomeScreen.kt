@@ -65,7 +65,6 @@ import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
-private val Accent = Color(0xFF3D5AFE)
 private val Muted = Color(0xFF9AA0B4)
 private const val COLUMNS = 5
 private const val FAVOURITES = 8
@@ -152,7 +151,7 @@ private fun SettingsOrb(onSettings: () -> Unit) {
         modifier = Modifier
             .onFocusChanged { focused = it.isFocused }
             .clickable { onSettings() }
-            .background(if (focused) Accent else Color.Transparent, CircleShape)
+            .background(if (focused) LocalAccent.current else Color.Transparent, CircleShape)
             .padding(8.dp),
     ) {
         Icon(
@@ -312,7 +311,7 @@ private fun AppCard(
         onLongClick = { onLongPress(shortcut) },
         scale = CardDefaults.scale(focusedScale = 1.08f),
         border = CardDefaults.border(
-            focusedBorder = Border(border = BorderStroke(2.dp, Accent))
+            focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
         ),
         modifier = modifier
             .aspectRatio(16f / 9f)

@@ -9,7 +9,10 @@ import alexcmb.mytvlauncher.compose.MenuSpec
 import alexcmb.mytvlauncher.compose.TvMenu
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
+import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.repository.AccentColor
+import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
@@ -27,12 +30,14 @@ import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
@@ -53,15 +58,18 @@ class LauncherActivity : ComponentActivity() {
     private lateinit var viewModel: BrowseViewModel
     private val updateManager by lazy { UpdateManager(applicationContext) }
     private val widgetSlot by lazy { WidgetSlotController(this) }
+    private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
     private var menu by mutableStateOf<MenuSpec?>(null)
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
+    private var accent by mutableStateOf(AccentColor.INDIGO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val factory = ViewModelProvider.AndroidViewModelFactory.getInstance(application)
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
+        accent = settings.accent()
         widgetSlot.onChanged = { refreshWidgets() }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -71,23 +79,25 @@ class LauncherActivity : ComponentActivity() {
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(groups, stringResource(R.string.title_home))
-            Box {
-                HomeScreen(
-                    tabs = tabs,
-                    widgets = widgets,
-                    clock = rememberClock(),
-                    onLaunch = ::launchShortcut,
-                    onLongPress = ::showAppMenu,
-                    onSettings = ::showSettingsMenu,
-                )
-                menu?.let { TvMenu(it) { menu = null } }
-                namingCategoryFor?.let { shortcut ->
-                    TvTextPrompt(
-                        title = stringResource(R.string.category_new_title),
-                        hint = stringResource(R.string.category_hint),
-                        onSubmit = { viewModel.setCategory(shortcut, it) },
-                        onDismiss = { namingCategoryFor = null },
+            CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
+                Box {
+                    HomeScreen(
+                        tabs = tabs,
+                        widgets = widgets,
+                        clock = rememberClock(),
+                        onLaunch = ::launchShortcut,
+                        onLongPress = ::showAppMenu,
+                        onSettings = ::showSettingsMenu,
                     )
+                    menu?.let { TvMenu(it) { menu = null } }
+                    namingCategoryFor?.let { shortcut ->
+                        TvTextPrompt(
+                            title = stringResource(R.string.category_new_title),
+                            hint = stringResource(R.string.category_hint),
+                            onSubmit = { viewModel.setCategory(shortcut, it) },
+                            onDismiss = { namingCategoryFor = null },
+                        )
+                    }
                 }
             }
         }
@@ -172,6 +182,7 @@ class LauncherActivity : ComponentActivity() {
 
     private fun showSettingsMenu() {
         val items = mutableListOf(
+            MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
             MenuItem(getString(R.string.action_android_settings)) {
                 menu = null
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
@@ -198,6 +209,30 @@ class LauncherActivity : ComponentActivity() {
         }
         menu = MenuSpec(getString(R.string.action_settings), items)
     }
+
+    private fun showAccentMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_accent),
+            items = AccentColor.entries.map { colour ->
+                MenuItem(accentName(colour), swatch = Color(colour.argb)) {
+                    menu = null
+                    settings.setAccent(colour)
+                    accent = colour
+                }
+            },
+        )
+    }
+
+    private fun accentName(colour: AccentColor): String = getString(
+        when (colour) {
+            AccentColor.INDIGO -> R.string.accent_indigo
+            AccentColor.TEAL -> R.string.accent_teal
+            AccentColor.CORAL -> R.string.accent_coral
+            AccentColor.PINK -> R.string.accent_pink
+            AccentColor.AMBER -> R.string.accent_amber
+            AccentColor.BLUE -> R.string.accent_blue
+        }
+    )
 
     /** Android TV ships no widget picker, so build one from the installed providers. */
     private fun showWidgetPicker() {

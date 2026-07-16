@@ -7,6 +7,13 @@
     <string name="home_opens_ranked">Ouverte %1$d fois · n°%2$d ici</string>
     <string name="home_never_opened">Jamais ouverte</string>
     <string name="action_settings">Paramètres</string>
+    <string name="action_accent">Couleur d\'accent</string>
+    <string name="accent_indigo">Indigo</string>
+    <string name="accent_teal">Turquoise</string>
+    <string name="accent_coral">Corail</string>
+    <string name="accent_pink">Rose</string>
+    <string name="accent_amber">Ambre</string>
+    <string name="accent_blue">Bleu</string>
     <string name="action_android_settings">Paramètres Android</string>
     <string name="action_check_updates">Rechercher des mises à jour</string>
     <string name="widget_add">Ajouter un widget</string>

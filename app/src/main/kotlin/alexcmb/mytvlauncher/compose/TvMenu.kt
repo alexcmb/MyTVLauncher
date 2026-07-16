@@ -7,10 +7,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -32,14 +37,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
-/** One line of a [TvMenu]. */
-data class MenuItem(val label: String, val onClick: () -> Unit)
+/** One line of a [TvMenu]; an optional swatch shows a colour choice. */
+data class MenuItem(val label: String, val swatch: Color? = null, val onClick: () -> Unit)
 
 /** A menu to show: nesting is just replacing the spec with the next one. */
 data class MenuSpec(val title: String, val items: List<MenuItem>)
 
 private val Panel = Color(0xF0202020)
-private val Accent = Color(0xFF3D5AFE)
 private val Muted = Color(0xFF9AA0B4)
 
 /**
@@ -94,17 +98,22 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
 @Composable
 private fun MenuRow(item: MenuItem, modifier: Modifier) {
     var focused by remember { mutableStateOf(false) }
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
             .clickable { item.onClick() }
             .background(
-                color = if (focused) Accent else Color.Transparent,
+                color = if (focused) LocalAccent.current else Color.Transparent,
                 shape = RoundedCornerShape(8.dp),
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (item.swatch != null) {
+            Box(Modifier.size(14.dp).background(item.swatch, CircleShape))
+            Spacer(Modifier.width(10.dp))
+        }
         Text(item.label, color = Color.White, fontSize = 15.sp)
     }
 }

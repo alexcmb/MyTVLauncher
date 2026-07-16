@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
 private val Panel = Color(0xF0202020)
-private val Accent = Color(0xFF3D5AFE)
 
 /** A single-field prompt matching [TvMenu]; the keyboard comes up with it. */
 @Composable
@@ -63,7 +62,7 @@ fun TvTextPrompt(title: String, hint: String, onSubmit: (String) -> Unit, onDism
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .background(Color.White.copy(alpha = 0.13f), RoundedCornerShape(6.dp))
-                    .border(2.dp, Accent, RoundedCornerShape(6.dp))
+                    .border(2.dp, LocalAccent.current, RoundedCornerShape(6.dp))
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 if (text.isEmpty()) {
