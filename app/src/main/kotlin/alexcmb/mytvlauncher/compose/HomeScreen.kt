@@ -19,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -316,7 +317,9 @@ private fun Hub(
 
     Column(
         Modifier
-            .padding(start = 48.dp, end = 48.dp)
+            // No horizontal padding on the group itself: the scrollable favourites row needs
+            // its clip bounds out at the screen edge so a focused card can scale up without
+            // being clipped. The 48dp margin is applied per child instead.
             .focusGroup()
             // DPAD-up from the top of the hub goes to the tabs, not the (spatially closer)
             // settings orb. Only redirect from the top row: a focused widget, or the
@@ -333,6 +336,9 @@ private fun Hub(
             },
     ) {
         if (widgets.isNotEmpty()) {
+            val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
+            val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
+            val endTiles = widgets.filter { it.alignment == WidgetAlignment.END }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -349,17 +355,16 @@ private fun Hub(
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
                     }
-                    .padding(bottom = 24.dp),
-                verticalAlignment = Alignment.Top,
+                    .padding(start = 48.dp, end = 48.dp, bottom = 24.dp),
             ) {
-                // Three placement zones: left packed left, centre centred, right packed
-                // right — the weighted spacers absorb whatever space the zones don't use.
+                // Three equal thirds; each zone is centred in its own third, so a CENTER
+                // widget sits at screen centre and START/END sit centred on their sides. A
+                // zone with an occupied neighbour is shrunk to fit its third so the two never
+                // overlap; a lone zone keeps full size (it just spills into the empty thirds).
                 val onFocused = { id: Int -> focusedWidget = id }
-                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.START }, spotlight, focusedWidget, onFocused)
-                Spacer(Modifier.weight(1f))
-                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.CENTER }, spotlight, focusedWidget, onFocused)
-                Spacer(Modifier.weight(1f))
-                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.END }, spotlight, focusedWidget, onFocused)
+                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
+                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, capped = startTiles.isNotEmpty() || endTiles.isNotEmpty(), Modifier.weight(1f))
+                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
             }
         }
         if (favourites.isNotEmpty()) {
@@ -376,13 +381,46 @@ private fun Hub(
                     text = stringResource(R.string.home_most_used),
                     color = Muted,
                     fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 8.dp),
+                    modifier = Modifier.padding(start = 48.dp, bottom = 8.dp),
                 )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                // contentPadding, not an outer margin, so the row clips at the screen edge and
+                // the end cards can scale up on focus without their border being truncated.
+                LazyRow(
+                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 6.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     items(favourites, key = { it.id }) { shortcut ->
                         AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * One third of the band, holding a placement zone centred within it. When [capped] (a
+ * neighbouring third is occupied) the zone is shrunk to fit its third so the two never
+ * overlap; otherwise it keeps full size and simply spills into the empty thirds beside it.
+ */
+@Composable
+private fun WidgetSlot(
+    tiles: List<WidgetTile>,
+    spotlight: Float,
+    focusedWidget: Int?,
+    onFocused: (Int) -> Unit,
+    capped: Boolean,
+    modifier: Modifier,
+) {
+    Box(modifier) {
+        if (tiles.isNotEmpty()) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val slotDp = maxWidth.value
+                val spacing = 16f * (tiles.size - 1)
+                val intrinsic =
+                    tiles.sumOf { (WidgetSize.BASE_WIDTH_DP * it.scale).toDouble() }.toFloat() + spacing
+                val fit = if (capped && intrinsic > slotDp) slotDp / intrinsic else 1f
+                WidgetZone(tiles, spotlight, focusedWidget, onFocused, fit, Modifier.align(Alignment.TopCenter))
             }
         }
     }
@@ -395,10 +433,12 @@ private fun WidgetZone(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
+    extraScale: Float,
+    modifier: Modifier = Modifier,
 ) {
     val baseW = WidgetSize.BASE_WIDTH_DP.dp
     val baseH = WidgetSize.BASE_HEIGHT_DP.dp
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
             key(tile.id) {
                 // Spotlight: the focused widget stays lit, the others dim.
@@ -406,10 +446,12 @@ private fun WidgetZone(
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
                 // The tile occupies the scaled footprint; the host view is always built at
                 // the base size (so its RemoteViews lay out well) and scaled to fit — most
-                // widgets clip rather than shrink if handed a small size directly.
+                // widgets clip rather than shrink if handed a small size directly. extraScale
+                // shrinks the zone further when it must share the band with a neighbour.
+                val scale = tile.scale * extraScale
                 Box(
                     modifier = Modifier
-                        .size(baseW * tile.scale, baseH * tile.scale)
+                        .size(baseW * scale, baseH * scale)
                         .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
                         .graphicsLayer { alpha = tileAlpha }
                         .clipToBounds(),
@@ -419,7 +461,7 @@ private fun WidgetZone(
                         factory = { tile.createView() },
                         modifier = Modifier
                             .requiredSize(baseW, baseH)
-                            .graphicsLayer { scaleX = tile.scale; scaleY = tile.scale },
+                            .graphicsLayer { scaleX = scale; scaleY = scale },
                     )
                 }
             }
@@ -439,7 +481,8 @@ private fun AppsGrid(
     var focusedIndex by remember { mutableStateOf(-1) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(cardSize.columns),
-        contentPadding = PaddingValues(start = 48.dp, end = 48.dp, bottom = 32.dp),
+        // Top padding so the top row can scale up on focus without its border being clipped.
+        contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         // DPAD-up from the top row goes to the tabs, not the settings orb; deeper rows keep
