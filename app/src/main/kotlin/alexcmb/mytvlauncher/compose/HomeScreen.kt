@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -177,17 +176,19 @@ private fun TopBar(
     onSettings: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Settings on the left; the clock on the right; the tabs centred between them.
-        SettingsOrb(onSettings)
-        Spacer(Modifier.weight(1f))
+    // Each part is anchored on its own: settings hard left, clock hard right, tabs on the
+    // true screen centre. Laying these out in a row with weighted spacers instead centres
+    // the tabs *between* the orb and the clock, and since those two aren't the same width
+    // the tabs end up off-centre by half the difference.
+    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp)) {
+        SettingsOrb(onSettings, Modifier.align(Alignment.CenterStart))
         // A hand-rolled row rather than tv-material's TabRow: its sliding indicator
         // animation hitched on the tab change.
         if (tabs.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 tabs.forEachIndexed { index, tab ->
                     // The selected chip is the up-target from the content below.
                     val chipModifier =
@@ -198,10 +199,12 @@ private fun TopBar(
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
         // Derived here so the once-a-second tick only recomposes the bar, not the screen.
         val values = rememberClockValues(clock)
-        Column(horizontalAlignment = Alignment.End) {
+        Column(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            horizontalAlignment = Alignment.End,
+        ) {
             values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
             Text(values.time, color = Color.White, fontSize = 20.sp)
             values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
@@ -239,10 +242,10 @@ private fun TabChip(
 }
 
 @Composable
-private fun SettingsOrb(onSettings: () -> Unit) {
+private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clickable { onSettings() }
             .background(if (focused) LocalAccent.current else Color.Transparent, CircleShape)
