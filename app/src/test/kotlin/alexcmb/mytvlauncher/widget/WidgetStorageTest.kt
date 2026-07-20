@@ -74,11 +74,10 @@ class WidgetStorageTest {
     }
 
     @Test
-    fun `round-trips the shape`() {
-        val widgets = listOf(
-            HostedWidget(1, WidgetSize.MEDIUM, WidgetAlignment.START, WidgetShape.WIDE),
-            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.CENTER, WidgetShape.SQUARE),
-        )
+    fun `round-trips every shape`() {
+        val widgets = WidgetShape.entries.mapIndexed { i, shape ->
+            HostedWidget(i, WidgetSize.MEDIUM, WidgetAlignment.START, shape)
+        }
         assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
     }
 

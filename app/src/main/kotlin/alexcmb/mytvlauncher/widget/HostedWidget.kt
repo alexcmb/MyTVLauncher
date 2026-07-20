@@ -15,12 +15,15 @@ enum class WidgetSize(val scale: Float) {
 }
 
 /**
- * The aspect a hosted widget is laid out at, before the size scale — some widgets are built
- * wide (16:9), others square (1:1), and forcing the wrong one distorts their content.
+ * The aspect a hosted widget is laid out at, before the size scale — widgets are built to
+ * different proportions and forcing the wrong one distorts their content. Same base height,
+ * so the choices line up in the band; only the width (the ratio) changes.
  */
 enum class WidgetShape(val baseWidthDp: Int, val baseHeightDp: Int) {
-    WIDE(320, 180),
-    SQUARE(200, 200),
+    WIDE(320, 180),       // 16:9
+    PANORAMIC(360, 180),  // 2:1
+    STANDARD(240, 180),   // 4:3
+    SQUARE(180, 180),     // 1:1
 }
 
 /** Where in the band a hosted widget sits. */

@@ -452,6 +452,8 @@ class LauncherActivity : ComponentActivity() {
             title = getString(R.string.widget_shape),
             items = listOf(
                 choice(R.string.widget_shape_wide, WidgetShape.WIDE),
+                choice(R.string.widget_shape_panoramic, WidgetShape.PANORAMIC),
+                choice(R.string.widget_shape_standard, WidgetShape.STANDARD),
                 choice(R.string.widget_shape_square, WidgetShape.SQUARE),
             ),
         )
