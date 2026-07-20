@@ -68,6 +68,8 @@ class LauncherActivity : ComponentActivity() {
     private var showGreeting by mutableStateOf(true)
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
+    private var showUsageCount by mutableStateOf(true)
+    private var showAppLabels by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +82,8 @@ class LauncherActivity : ComponentActivity() {
         showGreeting = settings.showGreeting()
         background = settings.background()
         cardSize = settings.cardSize()
+        showUsageCount = settings.showUsageCount()
+        showAppLabels = settings.showAppLabels()
         widgetSlot.onChanged = { refreshWidgets() }
         if (savedInstanceState == null) {
             // Cold start only: clean widget ids left over from cancelled/interrupted adds.
@@ -108,6 +112,8 @@ class LauncherActivity : ComponentActivity() {
                         background = background,
                         cardSize = cardSize,
                         accentAuto = accentAuto,
+                        showUsageCount = showUsageCount,
+                        showAppLabels = showAppLabels,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
@@ -262,6 +268,21 @@ class LauncherActivity : ComponentActivity() {
                 MenuItem(getString(R.string.action_clock)) { showClockMenu() },
                 MenuItem(getString(R.string.action_background)) { showBackgroundMenu() },
                 MenuItem(getString(R.string.action_card_size)) { showCardSizeMenu() },
+                MenuItem(getString(R.string.action_display)) { showDisplayMenu() },
+            ),
+        )
+    }
+
+    private fun showDisplayMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_display),
+            items = listOf(
+                toggleItem(R.string.display_usage_count, showUsageCount) {
+                    settings.setShowUsageCount(it); showUsageCount = it; showDisplayMenu()
+                },
+                toggleItem(R.string.display_app_names, showAppLabels) {
+                    settings.setShowAppLabels(it); showAppLabels = it; showDisplayMenu()
+                },
             ),
         )
     }

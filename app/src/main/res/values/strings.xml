@@ -12,6 +12,9 @@
     <string name="action_clock">Clock</string>
     <string name="action_background">Background</string>
     <string name="action_card_size">Card size</string>
+    <string name="action_display">Display</string>
+    <string name="display_usage_count">Usage counter</string>
+    <string name="display_app_names">App names</string>
     <string name="background_ambient">Ambient banner</string>
     <string name="background_gradient">Accent gradient</string>
     <string name="background_solid">Solid</string>

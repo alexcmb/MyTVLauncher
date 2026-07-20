@@ -19,6 +19,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -67,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -115,6 +117,8 @@ fun HomeScreen(
     background: BackgroundStyle,
     cardSize: CardSize,
     accentAuto: Boolean,
+    showUsageCount: Boolean,
+    showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onSettings: () -> Unit,
@@ -144,7 +148,7 @@ fun HomeScreen(
             if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
-                Hero(focused, tab?.shortcuts.orEmpty())
+                Hero(focused, tab?.shortcuts.orEmpty(), showUsageCount)
                 when {
                     tab == null -> Unit
                     // The first tab is a hub: widgets and a few favourites, nothing endless.
@@ -153,12 +157,13 @@ fun HomeScreen(
                         favourites = tab.shortcuts.take(FAVOURITES),
                         cardSize = cardSize,
                         tabsFocus = tabsFocus,
+                        showAppLabels = showAppLabels,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
-                    else -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, onLaunch, onLongPress) { focused = it }
+                    else -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress) { focused = it }
                 }
             }
         }
@@ -262,22 +267,24 @@ private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
 
 /** Surfaces the open count — data the launcher has always collected and never shown. */
 @Composable
-private fun Hero(focused: Shortcut?, inTab: List<Shortcut>) {
+private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean) {
     Column(Modifier.fillMaxWidth().height(64.dp).padding(start = 48.dp)) {
         if (focused != null) {
             Text(focused.title, color = Color.White, fontSize = 22.sp)
-            val rank = inTab.indexOf(focused) + 1
-            val opens = focused.openCount
-            Text(
-                text = when {
-                    opens == 0 -> stringResource(R.string.home_never_opened)
-                    rank == 1 -> stringResource(R.string.home_opens_top, opens)
-                    else -> stringResource(R.string.home_opens_ranked, opens, rank)
-                },
-                color = Muted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            if (showUsageCount) {
+                val rank = inTab.indexOf(focused) + 1
+                val opens = focused.openCount
+                Text(
+                    text = when {
+                        opens == 0 -> stringResource(R.string.home_never_opened)
+                        rank == 1 -> stringResource(R.string.home_opens_top, opens)
+                        else -> stringResource(R.string.home_opens_ranked, opens, rank)
+                    },
+                    color = Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
     }
 }
@@ -288,6 +295,7 @@ private fun Hub(
     favourites: List<Shortcut>,
     cardSize: CardSize,
     tabsFocus: FocusRequester,
+    showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -393,7 +401,7 @@ private fun Hub(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(favourites, key = { it.id }) { shortcut ->
-                        AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
+                        AppCard(shortcut, showAppLabels, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
                     }
                 }
             }
@@ -477,6 +485,7 @@ private fun AppsGrid(
     shortcuts: List<Shortcut>,
     cardSize: CardSize,
     tabsFocus: FocusRequester,
+    showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -504,7 +513,7 @@ private fun AppsGrid(
             },
     ) {
         itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
-            AppCard(shortcut, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
+            AppCard(shortcut, showAppLabels, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
         }
     }
 }
@@ -533,6 +542,7 @@ private fun AmbientBackdrop(focused: Shortcut?) {
 @Composable
 private fun AppCard(
     shortcut: Shortcut,
+    showLabel: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -553,17 +563,37 @@ private fun AppCard(
             val banner = shortcut.banner
             if (banner != null) {
                 DrawableImage(banner, Modifier.fillMaxSize(), ContentScale.Crop)
+                // Optional name over the banner, with a scrim across the bottom for legibility.
+                if (showLabel) {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.55f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.7f),
+                            )
+                        )
+                    )
+                    CardLabel(shortcut.title)
+                }
             } else {
+                // No banner: the icon needs its name regardless of the setting.
                 shortcut.icon?.let { DrawableImage(it, Modifier.size(64.dp), ContentScale.Fit) }
-                Text(
-                    text = shortcut.title,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-                )
+                CardLabel(shortcut.title)
             }
         }
     }
+}
+
+@Composable
+private fun BoxScope.CardLabel(title: String) {
+    Text(
+        text = title,
+        color = Color.White,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+    )
 }
 
 /** The live clock, re-aligned on the whole second so it doesn't drift. */

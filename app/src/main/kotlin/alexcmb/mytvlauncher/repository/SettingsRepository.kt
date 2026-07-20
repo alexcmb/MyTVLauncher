@@ -42,6 +42,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_GREETING = "greeting"
         private const val KEY_BACKGROUND = "background"
         private const val KEY_CARD_SIZE = "card_size"
+        private const val KEY_USAGE_COUNT = "usage_count"
+        private const val KEY_APP_LABELS = "app_labels"
     }
 
     private val sharedPreferences = context.getSharedPreferences("settings", 0)
@@ -90,4 +92,16 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setCardSize(size: CardSize) =
         sharedPreferences.edit().putString(KEY_CARD_SIZE, size.name).apply()
+
+    /** Whether the hero shows the "opened N times" line under a focused app. */
+    fun showUsageCount(): Boolean = sharedPreferences.getBoolean(KEY_USAGE_COUNT, true)
+
+    fun setShowUsageCount(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_USAGE_COUNT, show).apply()
+
+    /** Whether every card carries its app name, not just the banner-less fallback ones. */
+    fun showAppLabels(): Boolean = sharedPreferences.getBoolean(KEY_APP_LABELS, false)
+
+    fun setShowAppLabels(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_APP_LABELS, show).apply()
 }
