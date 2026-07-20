@@ -19,3 +19,7 @@ local.properties
 *.keystore
 /keystore/
 keystore.properties
+
+# Encoded signing material — never commit
+*.b64
+release.jks*

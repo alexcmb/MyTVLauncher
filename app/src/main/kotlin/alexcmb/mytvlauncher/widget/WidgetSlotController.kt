@@ -211,10 +211,13 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     private fun keep(id: Int) {
-        repository.add(HostedWidget(id, WidgetSize.MEDIUM))
+        // Drop the new widget into the first free zone, so successive adds fill left, then
+        // centre, then right, instead of piling up on the left.
+        val alignment = nextFreeAlignment(repository.query().map { it.alignment })
+        repository.add(HostedWidget(id, WidgetSize.MEDIUM, alignment))
         pendingId = NO_WIDGET
         refresh()
-        Log.i(TAG, "Hosting widget $id")
+        Log.i(TAG, "Hosting widget $id in $alignment")
     }
 
     private fun bindConsentIntent(id: Int, provider: AppWidgetProviderInfo) =

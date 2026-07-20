@@ -27,6 +27,14 @@ enum class WidgetAlignment {
     END,
 }
 
+/**
+ * The zone to drop a newly added widget into: the first one not already taken, so successive
+ * adds fill left, then centre, then right. Falls back to START once all three are in use
+ * (which the widget cap normally prevents).
+ */
+fun nextFreeAlignment(taken: Collection<WidgetAlignment>): WidgetAlignment =
+    WidgetAlignment.entries.firstOrNull { it !in taken } ?: WidgetAlignment.START
+
 /** A widget the launcher hosts, and the size and placement the user gave it. */
 data class HostedWidget(
     val id: Int,
