@@ -13,3 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Signing keys never belong in the repo — CI gets them from repository secrets.
+*.jks
+*.keystore
+/keystore/
+keystore.properties
