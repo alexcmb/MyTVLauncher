@@ -4,6 +4,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing material never lives in the repo: CI decodes the keystore from repository
+// secrets and passes these in the environment, and a local release build can export the same.
+// When they're absent — any debug build — the release type is simply left unsigned rather
+// than failing the build.
+val signingStore: String? = System.getenv("SIGNING_STORE_FILE")
+val signingStorePass: String? = System.getenv("SIGNING_STORE_PASSWORD")
+val signingAlias: String? = System.getenv("SIGNING_KEY_ALIAS")
+val signingKeyPass: String? = System.getenv("SIGNING_KEY_PASSWORD")
+
 android {
     namespace = "alexcmb.mytvlauncher"
     compileSdk = 35
@@ -17,13 +26,14 @@ android {
         versionName = (project.findProperty("appVersionName") as String?) ?: "2021.9.13"
     }
     signingConfigs {
-        // A fixed debug keystore committed to the repo so every build
-        // (local and CI) shares one signature, allowing in-app updates.
-        getByName("debug") {
-            storeFile = file("../keystore/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        // Debug builds use the SDK's own per-machine debug key; nothing to configure.
+        if (signingStore != null) {
+            create("release") {
+                storeFile = file(signingStore)
+                storePassword = signingStorePass
+                keyAlias = signingAlias
+                keyPassword = signingKeyPass
+            }
         }
     }
     buildFeatures {
@@ -36,6 +46,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Null when no signing material was supplied: the APK comes out unsigned rather
+            // than the build failing.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
     compileOptions {
