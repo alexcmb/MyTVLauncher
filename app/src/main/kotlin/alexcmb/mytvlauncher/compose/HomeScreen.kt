@@ -62,11 +62,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -410,7 +412,12 @@ private fun Hub(
     }
 }
 
-/** One third of the band, holding its placement zone centred within it. */
+/**
+ * One third of the band. Its zone is measured unbounded so a tile keeps its true size — a
+ * plain size() would be clamped by the third's width, which silently cropped every widget
+ * wider than it. A zone that fits is centred in its third; one that overflows is anchored to
+ * its side (START left, END right) so it grows over free space, never past the screen edge.
+ */
 @Composable
 private fun WidgetSlot(
     tiles: List<WidgetTile>,
@@ -419,9 +426,24 @@ private fun WidgetSlot(
     onFocused: (Int) -> Unit,
     modifier: Modifier,
 ) {
-    Box(modifier) {
+    val alignment = tiles.firstOrNull()?.alignment
+    Box(
+        modifier.layout { measurable, constraints ->
+            val placeable = measurable.measure(
+                constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity)
+            )
+            val width = constraints.maxWidth
+            val x = when {
+                placeable.width <= width -> (width - placeable.width) / 2
+                alignment == WidgetAlignment.START -> 0
+                alignment == WidgetAlignment.END -> width - placeable.width
+                else -> (width - placeable.width) / 2
+            }
+            layout(width, placeable.height) { placeable.placeRelative(x, 0) }
+        }
+    ) {
         if (tiles.isNotEmpty()) {
-            WidgetZone(tiles, spotlight, focusedWidget, onFocused, Modifier.align(Alignment.TopCenter))
+            WidgetZone(tiles, spotlight, focusedWidget, onFocused)
         }
     }
 }
