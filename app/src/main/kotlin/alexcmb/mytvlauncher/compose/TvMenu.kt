@@ -25,8 +25,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -50,6 +52,7 @@ private val Muted = Color(0xFF9AA0B4)
  * A menu over the home screen: scrim, dark panel, focusable rows. Back closes it, and the
  * first row takes the focus so the remote lands somewhere useful.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
@@ -88,7 +91,19 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
             )
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 spec.items.forEachIndexed { index, item ->
-                    MenuRow(item, if (index == 0) Modifier.focusRequester(firstRow) else Modifier)
+                    // Trap the focus inside the menu: left/right have nowhere to go here and
+                    // would otherwise escape to the launcher behind the scrim, and so would up
+                    // off the first row or down off the last. Cancel those moves; up/down
+                    // between rows still works. Back is the only way out.
+                    val rowModifier = Modifier
+                        .then(if (index == 0) Modifier.focusRequester(firstRow) else Modifier)
+                        .focusProperties {
+                            left = FocusRequester.Cancel
+                            right = FocusRequester.Cancel
+                            if (index == 0) up = FocusRequester.Cancel
+                            if (index == spec.items.lastIndex) down = FocusRequester.Cancel
+                        }
+                    MenuRow(item, rowModifier)
                 }
             }
         }
