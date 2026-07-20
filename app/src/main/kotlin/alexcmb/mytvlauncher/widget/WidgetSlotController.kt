@@ -9,6 +9,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -42,6 +43,32 @@ class WidgetSlotController(private val activity: Activity) {
 
     fun stopListening() = host.stopListening()
 
+    /**
+     * The widget being bound/configured, exposed so the activity can carry it across a
+     * recreation — a widget's configure screen can tear our activity down and back up, and
+     * without the id the returning configure result would be dropped (and the widget lost).
+     */
+    var pendingWidgetId: Int
+        get() = pendingId
+        set(value) { pendingId = value }
+
+    /**
+     * Deletes widget ids the host allocated but we never kept — a cancelled or interrupted
+     * add leaves the id bound but absent from our store, and left alone they pile up. Call
+     * this only on a cold start: during an add the activity may stop/restart (or be recreated)
+     * around a configure screen, and pruning then would delete the widget mid-flight.
+     */
+    fun pruneOrphans() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val kept = repository.query().map { it.id }.toSet()
+        host.appWidgetIds.forEach { id ->
+            if (id !in kept && id != pendingId) {
+                Log.i(TAG, "Pruning orphaned widget id $id")
+                host.deleteAppWidgetId(id)
+            }
+        }
+    }
+
     fun hasWidgets(): Boolean = repository.query().isNotEmpty()
 
     /** Room for another widget? The band is deliberately capped so it stays a dashboard. */
@@ -66,13 +93,17 @@ class WidgetSlotController(private val activity: Activity) {
         alive
     }
 
-    /** Builds one host view for a widget, sized; Compose owns its placement. */
+    /**
+     * Builds one host view for a widget at the shared base size; Compose scales and places
+     * it. Every widget lays out at the same size so its RemoteViews are comfortable, then the
+     * hub scales the rendered view — most widgets won't shrink their own layout, they'd clip.
+     */
     fun createHostView(hosted: HostedWidget): View {
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
-        view.updateAppWidgetSize(
-            null, hosted.size.widthDp, hosted.size.heightDp, hosted.size.widthDp, hosted.size.heightDp
-        )
+        val w = WidgetSize.BASE_WIDTH_DP
+        val h = WidgetSize.BASE_HEIGHT_DP
+        view.updateAppWidgetSize(null, w, h, w, h)
         return view
     }
 
@@ -229,7 +260,7 @@ class WidgetSlotController(private val activity: Activity) {
         private const val HOST_ID = 1024
         /** The band is a dashboard, not a wall: keep it to a handful. */
         const val MAX_WIDGETS = 3
-        private const val NO_WIDGET = -1
+        const val NO_WIDGET = -1
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002
         const val REQUEST_PICK = 1003

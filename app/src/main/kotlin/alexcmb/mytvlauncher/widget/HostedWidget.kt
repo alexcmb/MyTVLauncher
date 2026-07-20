@@ -1,12 +1,23 @@
 package alexcmb.mytvlauncher.widget
 
-/** How much room a hosted widget takes in the band. */
-enum class WidgetSize(val widthDp: Int, val heightDp: Int) {
-    XSMALL(160, 100),
-    SMALL(200, 120),
-    MEDIUM(320, 180),
-    LARGE(480, 240),
-    XLARGE(600, 300),
+/**
+ * How big a hosted widget is shown. Every widget is hosted at one base size (so its
+ * RemoteViews lay out comfortably) and then scaled by this factor — scaling the rendered
+ * result rather than shrinking the layout, which most widgets refuse to do (they'd just
+ * clip). 1f is the base; below it shrinks, above it grows.
+ */
+enum class WidgetSize(val scale: Float) {
+    XSMALL(0.6f),
+    SMALL(0.8f),
+    MEDIUM(1f),
+    LARGE(1.3f),
+    XLARGE(1.6f);
+
+    companion object {
+        /** The size every widget is actually hosted (and told to lay out) at, before scaling. */
+        const val BASE_WIDTH_DP = 320
+        const val BASE_HEIGHT_DP = 180
+    }
 }
 
 /** Where in the band a hosted widget sits. */
