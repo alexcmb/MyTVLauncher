@@ -96,4 +96,21 @@ class WidgetStorageTest {
             WidgetStorage.decode("7:SMALL:START:TRIANGLE")
         )
     }
+
+    @Test
+    fun `round-trips the fit`() {
+        val widgets = listOf(
+            HostedWidget(1, WidgetSize.MEDIUM, WidgetAlignment.START, WidgetShape.WIDE, WidgetFit.NATIVE),
+            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.FIT),
+        )
+        assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
+    }
+
+    @Test
+    fun `defaults to native fit for entries stored before it existed`() {
+        assertEquals(
+            listOf(HostedWidget(8, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.NATIVE)),
+            WidgetStorage.decode("8:MEDIUM:END:SQUARE")
+        )
+    }
 }

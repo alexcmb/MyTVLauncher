@@ -3,6 +3,7 @@ package alexcmb.mytvlauncher.repository
 import alexcmb.mytvlauncher.util.SingletonHolder
 import alexcmb.mytvlauncher.widget.HostedWidget
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import alexcmb.mytvlauncher.widget.WidgetFit
 import alexcmb.mytvlauncher.widget.WidgetShape
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetStorage
@@ -31,6 +32,9 @@ class WidgetRepository private constructor(context: Context) {
 
     fun updateShape(id: Int, shape: WidgetShape) =
         save(query().map { if (it.id == id) it.copy(shape = shape) else it })
+
+    fun updateFit(id: Int, fit: WidgetFit) =
+        save(query().map { if (it.id == id) it.copy(fit = fit) else it })
 
     private fun save(widgets: List<HostedWidget>) =
         sharedPreferences.edit().putString(KEY, WidgetStorage.encode(widgets)).apply()

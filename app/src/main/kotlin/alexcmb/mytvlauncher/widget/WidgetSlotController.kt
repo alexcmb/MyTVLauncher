@@ -94,15 +94,15 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     /**
-     * Builds one host view for a widget at its real chosen size (shape times size scale) and
-     * tells the provider that size, so a responsive widget lays out the matching variant
-     * rather than one layout stretched to fit.
+     * Builds one host view for a widget at its layout size — the real size in NATIVE fit (so a
+     * responsive widget picks the matching variant) or the shape's base size in FIT (the hub
+     * then scales that down). The provider is told this size so it lays out to match.
      */
     fun createHostView(hosted: HostedWidget): View {
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
-        val w = (hosted.shape.baseWidthDp * hosted.size.scale).toInt()
-        val h = (hosted.shape.baseHeightDp * hosted.size.scale).toInt()
+        val w = hosted.layoutWidthDp()
+        val h = hosted.layoutHeightDp()
         view.updateAppWidgetSize(null, w, h, w, h)
         return view
     }
@@ -164,6 +164,11 @@ class WidgetSlotController(private val activity: Activity) {
 
     fun reshape(id: Int, shape: WidgetShape) {
         repository.updateShape(id, shape)
+        refresh()
+    }
+
+    fun refit(id: Int, fit: WidgetFit) {
+        repository.updateFit(id, fit)
         refresh()
     }
 

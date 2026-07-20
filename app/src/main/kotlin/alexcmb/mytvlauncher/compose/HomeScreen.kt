@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -91,11 +92,16 @@ private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its real size in dp, where it sits, and a host-view factory. */
+/**
+ * A widget to place on the hub: its tile footprint, the size its host view is laid out at
+ * (equal in NATIVE fit, larger in FIT so it can be scaled down), where it sits, and a factory.
+ */
 data class WidgetTile(
     val id: Int,
     val widthDp: Int,
     val heightDp: Int,
+    val layoutWidthDp: Int,
+    val layoutHeightDp: Int,
     val alignment: WidgetAlignment,
     val createView: () -> View,
 )
@@ -431,10 +437,9 @@ private fun WidgetZone(
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
-            // Key on the size: a shape or size change gives a new node, so a fresh host view is
-            // built and told the new dimensions — the widget then lays out its matching variant
-            // natively, rather than one layout scaled to fit.
-            key(tile.id, tile.widthDp, tile.heightDp) {
+            // Key on both sizes: a change to either gives a new node, so a fresh host view is
+            // built at (and told) the new layout size.
+            key(tile.id, tile.widthDp, tile.heightDp, tile.layoutWidthDp, tile.layoutHeightDp) {
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
@@ -445,8 +450,20 @@ private fun WidgetZone(
                         .graphicsLayer { alpha = tileAlpha }
                         // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
+                    // The host view is laid out at its layout size and scaled to the tile: in
+                    // NATIVE fit those are equal (scale 1, the widget owns the size and may
+                    // clip); in FIT the layout is the larger base size scaled down so it shows
+                    // whole.
+                    val sx = tile.widthDp.toFloat() / tile.layoutWidthDp
+                    val sy = tile.heightDp.toFloat() / tile.layoutHeightDp
+                    AndroidView(
+                        factory = { tile.createView() },
+                        modifier = Modifier
+                            .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
+                            .graphicsLayer { scaleX = sx; scaleY = sy },
+                    )
                 }
             }
         }

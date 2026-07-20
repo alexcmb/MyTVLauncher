@@ -48,6 +48,9 @@
     <string name="widget_shape_panoramic">Panoramique (2:1)</string>
     <string name="widget_shape_standard">Standard (4:3)</string>
     <string name="widget_shape_square">Carré (1:1)</string>
+    <string name="widget_render">Rendu</string>
+    <string name="widget_render_native">Natif (peut rogner)</string>
+    <string name="widget_render_fit">Ajusté (toujours entier)</string>
     <string name="widget_limit_reached">Vous pouvez héberger jusqu\'à %1$d widgets</string>
     <string name="widget_size_xsmall">Très petit</string>
     <string name="widget_size_small">Petit</string>

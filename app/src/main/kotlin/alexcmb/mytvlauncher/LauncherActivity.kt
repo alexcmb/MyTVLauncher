@@ -18,9 +18,14 @@ import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import alexcmb.mytvlauncher.widget.WidgetFit
 import alexcmb.mytvlauncher.widget.WidgetShape
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
+import alexcmb.mytvlauncher.widget.layoutHeightDp
+import alexcmb.mytvlauncher.widget.layoutWidthDp
+import alexcmb.mytvlauncher.widget.tileHeightDp
+import alexcmb.mytvlauncher.widget.tileWidthDp
 import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -180,20 +185,20 @@ class LauncherActivity : ComponentActivity() {
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
-    // Home was what made the tab change hitch. Keyed by id and real size — changing shape or
-    // size changes the dimensions the widget is laid out at, so it needs a fresh view.
+    // Home was what made the tab change hitch. Keyed by id and layout size — that's the size the
+    // view is actually built and told, so it's what a rebuild depends on.
     private val hostViews = HashMap<Int, Pair<Pair<Int, Int>, View>>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
         widgets = hosted.map { h ->
-            val w = (h.shape.baseWidthDp * h.size.scale).toInt()
-            val ht = (h.shape.baseHeightDp * h.size.scale).toInt()
-            val dims = w to ht
-            WidgetTile(h.id, w, ht, h.alignment) {
-                val cached = hostViews[h.id]?.takeIf { it.first == dims }?.second
-                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = dims to it }
+            val layout = h.layoutWidthDp() to h.layoutHeightDp()
+            WidgetTile(
+                h.id, h.tileWidthDp(), h.tileHeightDp(), h.layoutWidthDp(), h.layoutHeightDp(), h.alignment,
+            ) {
+                val cached = hostViews[h.id]?.takeIf { it.first == layout }?.second
+                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = layout to it }
                 // It may still be attached to the AndroidView from the previous visit.
                 (view.parent as? ViewGroup)?.removeView(view)
                 view
@@ -283,6 +288,9 @@ class LauncherActivity : ComponentActivity() {
             }
             items += MenuItem(getString(R.string.widget_shape)) {
                 pickHostedWidget(R.string.widget_shape, ::showShapeMenu)
+            }
+            items += MenuItem(getString(R.string.widget_render)) {
+                pickHostedWidget(R.string.widget_render, ::showFitMenu)
             }
             items += MenuItem(getString(R.string.widget_remove)) {
                 pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
@@ -480,6 +488,20 @@ class LauncherActivity : ComponentActivity() {
                 choice(R.string.widget_shape_panoramic, WidgetShape.PANORAMIC),
                 choice(R.string.widget_shape_standard, WidgetShape.STANDARD),
                 choice(R.string.widget_shape_square, WidgetShape.SQUARE),
+            ),
+        )
+    }
+
+    private fun showFitMenu(id: Int) {
+        fun choice(label: Int, fit: WidgetFit) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.refit(id, fit)
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_render),
+            items = listOf(
+                choice(R.string.widget_render_native, WidgetFit.NATIVE),
+                choice(R.string.widget_render_fit, WidgetFit.FIT),
             ),
         )
     }

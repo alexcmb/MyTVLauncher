@@ -34,6 +34,17 @@ enum class WidgetAlignment {
 }
 
 /**
+ * How a hosted widget is fitted to its tile. NATIVE hands the widget its real size so a
+ * responsive one picks the matching layout (but a widget that won't shrink gets cropped);
+ * FIT lays the widget out at its shape's base size and scales the result down, so it always
+ * shows whole (at the cost of that per-size native variant).
+ */
+enum class WidgetFit {
+    NATIVE,
+    FIT,
+}
+
+/**
  * The zone to drop a newly added widget into: the first one not already taken, so successive
  * adds fill left, then centre, then right. Falls back to START once all three are in use
  * (which the widget cap normally prevents).
@@ -41,19 +52,34 @@ enum class WidgetAlignment {
 fun nextFreeAlignment(taken: Collection<WidgetAlignment>): WidgetAlignment =
     WidgetAlignment.entries.firstOrNull { it !in taken } ?: WidgetAlignment.START
 
-/** A widget the launcher hosts, and the size, placement and shape the user gave it. */
+/** A widget the launcher hosts, and the size, placement, shape and fit the user gave it. */
 data class HostedWidget(
     val id: Int,
     val size: WidgetSize,
     val alignment: WidgetAlignment = WidgetAlignment.START,
     val shape: WidgetShape = WidgetShape.WIDE,
+    val fit: WidgetFit = WidgetFit.NATIVE,
 )
+
+/** The footprint the widget takes in the band: shape base times the size scale. */
+fun HostedWidget.tileWidthDp(): Int = (shape.baseWidthDp * size.scale).toInt()
+fun HostedWidget.tileHeightDp(): Int = (shape.baseHeightDp * size.scale).toInt()
+
+/**
+ * The size the host view is actually laid out at (and told). NATIVE lays out at the footprint
+ * so the widget picks the matching variant; FIT lays out at the shape's base size and the hub
+ * scales that down to the footprint, so it can't clip.
+ */
+fun HostedWidget.layoutWidthDp(): Int =
+    if (fit == WidgetFit.NATIVE) tileWidthDp() else shape.baseWidthDp
+fun HostedWidget.layoutHeightDp(): Int =
+    if (fit == WidgetFit.NATIVE) tileHeightDp() else shape.baseHeightDp
 
 /** Serialises the hosted widgets; kept pure so the round-trip can be unit-tested. */
 object WidgetStorage {
     fun encode(widgets: List<HostedWidget>): String =
         widgets.joinToString(SEPARATOR) {
-            "${it.id}$FIELD${it.size.name}$FIELD${it.alignment.name}$FIELD${it.shape.name}"
+            "${it.id}$FIELD${it.size.name}$FIELD${it.alignment.name}$FIELD${it.shape.name}$FIELD${it.fit.name}"
         }
 
     /** Skips entries it can't read rather than losing the whole band to one bad one. */
@@ -71,7 +97,10 @@ object WidgetStorage {
             val shape = fields.getOrNull(3)
                 ?.let { name -> WidgetShape.entries.firstOrNull { it.name == name } }
                 ?: WidgetShape.WIDE
-            HostedWidget(id, size, alignment, shape)
+            val fit = fields.getOrNull(4)
+                ?.let { name -> WidgetFit.entries.firstOrNull { it.name == name } }
+                ?: WidgetFit.NATIVE
+            HostedWidget(id, size, alignment, shape, fit)
         }
 
     private const val SEPARATOR = ","
