@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -61,11 +62,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -445,8 +448,32 @@ private fun WidgetZone(
                         .graphicsLayer { alpha = tileAlpha }
                         // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
+                    // The widget is told its real size (so a responsive one picks the matching
+                    // variant), but a widget that won't shrink renders at its own minimum. Let
+                    // it measure unbounded, then scale down only what overflows the tile — so
+                    // reducing the size always shrinks the widget, never just crops it.
+                    val density = LocalDensity.current
+                    var natural by remember(tile.id, tile.widthDp, tile.heightDp) {
+                        mutableStateOf(IntSize.Zero)
+                    }
+                    val fit = if (natural.width == 0 || natural.height == 0) {
+                        1f
+                    } else with(density) {
+                        minOf(
+                            tile.widthDp.dp.toPx() / natural.width,
+                            tile.heightDp.dp.toPx() / natural.height,
+                            1f,
+                        )
+                    }
+                    AndroidView(
+                        factory = { tile.createView() },
+                        modifier = Modifier
+                            .wrapContentSize(unbounded = true)
+                            .onSizeChanged { natural = it }
+                            .graphicsLayer { scaleX = fit; scaleY = fit },
+                    )
                 }
             }
         }
