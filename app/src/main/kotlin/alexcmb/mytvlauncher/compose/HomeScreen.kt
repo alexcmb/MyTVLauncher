@@ -19,7 +19,6 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -93,12 +91,11 @@ private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its base size, scale, where it sits, and a host-view factory. */
+/** A widget to place on the hub: its real size in dp, where it sits, and a host-view factory. */
 data class WidgetTile(
     val id: Int,
-    val baseWidthDp: Int,
-    val baseHeightDp: Int,
-    val scale: Float,
+    val widthDp: Int,
+    val heightDp: Int,
     val alignment: WidgetAlignment,
     val createView: () -> View,
 )
@@ -321,9 +318,7 @@ private fun Hub(
     val density = LocalDensity.current
     val bandRisePx = remember(widgets) {
         if (widgets.isEmpty()) 0f
-        else with(density) {
-            (widgets.maxOf { it.baseHeightDp * it.scale } + 24).dp.toPx()
-        }
+        else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
     }
     val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
 
@@ -369,14 +364,13 @@ private fun Hub(
                     }
                     .padding(start = 48.dp, end = 48.dp, bottom = 24.dp),
             ) {
-                // Three equal thirds; each zone is centred in its own third, so a CENTER
-                // widget sits at screen centre and START/END sit centred on their sides. A
-                // zone with an occupied neighbour is shrunk to fit its third so the two never
-                // overlap; a lone zone keeps full size (it just spills into the empty thirds).
+                // Three equal thirds; each zone is centred in its own, so a CENTER widget sits
+                // at screen centre and START/END sit centred on their sides. Widgets render at
+                // their real chosen size — pick a size that fits if the band gets crowded.
                 val onFocused = { id: Int -> focusedWidget = id }
-                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
-                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, capped = startTiles.isNotEmpty() || endTiles.isNotEmpty(), Modifier.weight(1f))
-                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
+                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
+                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
+                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
             }
         }
         if (favourites.isNotEmpty()) {
@@ -410,30 +404,18 @@ private fun Hub(
     }
 }
 
-/**
- * One third of the band, holding a placement zone centred within it. When [capped] (a
- * neighbouring third is occupied) the zone is shrunk to fit its third so the two never
- * overlap; otherwise it keeps full size and simply spills into the empty thirds beside it.
- */
+/** One third of the band, holding its placement zone centred within it. */
 @Composable
 private fun WidgetSlot(
     tiles: List<WidgetTile>,
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
-    capped: Boolean,
     modifier: Modifier,
 ) {
     Box(modifier) {
         if (tiles.isNotEmpty()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val slotDp = maxWidth.value
-                val spacing = 16f * (tiles.size - 1)
-                val intrinsic =
-                    tiles.sumOf { (it.baseWidthDp * it.scale).toDouble() }.toFloat() + spacing
-                val fit = if (capped && intrinsic > slotDp) slotDp / intrinsic else 1f
-                WidgetZone(tiles, spotlight, focusedWidget, onFocused, fit, Modifier.align(Alignment.TopCenter))
-            }
+            WidgetZone(tiles, spotlight, focusedWidget, onFocused, Modifier.align(Alignment.TopCenter))
         }
     }
 }
@@ -445,38 +427,26 @@ private fun WidgetZone(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
-    extraScale: Float,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
-            // Key on the base size too: changing shape gives a new node, so a fresh host view
-            // is built (and told) the new size instead of the cached one being reused.
-            key(tile.id, tile.baseWidthDp, tile.baseHeightDp) {
-                val baseW = tile.baseWidthDp.dp
-                val baseH = tile.baseHeightDp.dp
+            // Key on the size: a shape or size change gives a new node, so a fresh host view is
+            // built and told the new dimensions — the widget then lays out its matching variant
+            // natively, rather than one layout scaled to fit.
+            key(tile.id, tile.widthDp, tile.heightDp) {
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
-                // The tile occupies the scaled footprint; the host view is always built at
-                // the base size (so its RemoteViews lay out well) and scaled to fit — most
-                // widgets clip rather than shrink if handed a small size directly. extraScale
-                // shrinks the zone further when it must share the band with a neighbour.
-                val scale = tile.scale * extraScale
                 Box(
                     modifier = Modifier
-                        .size(baseW * scale, baseH * scale)
+                        .size(tile.widthDp.dp, tile.heightDp.dp)
                         .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
                         .graphicsLayer { alpha = tileAlpha }
+                        // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
-                    contentAlignment = Alignment.Center,
                 ) {
-                    AndroidView(
-                        factory = { tile.createView() },
-                        modifier = Modifier
-                            .requiredSize(baseW, baseH)
-                            .graphicsLayer { scaleX = scale; scaleY = scale },
-                    )
+                    AndroidView(factory = { tile.createView() }, modifier = Modifier.fillMaxSize())
                 }
             }
         }

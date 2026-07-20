@@ -180,18 +180,20 @@ class LauncherActivity : ComponentActivity() {
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
-    // Home was what made the tab change hitch. Keyed by id and shape — a size (scale) change is
-    // just Compose scaling, but a shape change alters the size the widget is laid out at, so it
-    // needs a fresh view.
-    private val hostViews = HashMap<Int, Pair<WidgetShape, View>>()
+    // Home was what made the tab change hitch. Keyed by id and real size — changing shape or
+    // size changes the dimensions the widget is laid out at, so it needs a fresh view.
+    private val hostViews = HashMap<Int, Pair<Pair<Int, Int>, View>>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
         widgets = hosted.map { h ->
-            WidgetTile(h.id, h.shape.baseWidthDp, h.shape.baseHeightDp, h.size.scale, h.alignment) {
-                val cached = hostViews[h.id]?.takeIf { it.first == h.shape }?.second
-                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = h.shape to it }
+            val w = (h.shape.baseWidthDp * h.size.scale).toInt()
+            val ht = (h.shape.baseHeightDp * h.size.scale).toInt()
+            val dims = w to ht
+            WidgetTile(h.id, w, ht, h.alignment) {
+                val cached = hostViews[h.id]?.takeIf { it.first == dims }?.second
+                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = dims to it }
                 // It may still be attached to the AndroidView from the previous visit.
                 (view.parent as? ViewGroup)?.removeView(view)
                 view

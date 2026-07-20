@@ -94,15 +94,15 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     /**
-     * Builds one host view for a widget at the shared base size; Compose scales and places
-     * it. Every widget lays out at the same size so its RemoteViews are comfortable, then the
-     * hub scales the rendered view — most widgets won't shrink their own layout, they'd clip.
+     * Builds one host view for a widget at its real chosen size (shape times size scale) and
+     * tells the provider that size, so a responsive widget lays out the matching variant
+     * rather than one layout stretched to fit.
      */
     fun createHostView(hosted: HostedWidget): View {
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
-        val w = hosted.shape.baseWidthDp
-        val h = hosted.shape.baseHeightDp
+        val w = (hosted.shape.baseWidthDp * hosted.size.scale).toInt()
+        val h = (hosted.shape.baseHeightDp * hosted.size.scale).toInt()
         view.updateAppWidgetSize(null, w, h, w, h)
         return view
     }
