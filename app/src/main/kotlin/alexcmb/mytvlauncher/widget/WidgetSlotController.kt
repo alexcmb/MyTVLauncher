@@ -101,8 +101,8 @@ class WidgetSlotController(private val activity: Activity) {
     fun createHostView(hosted: HostedWidget): View {
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
-        val w = WidgetSize.BASE_WIDTH_DP
-        val h = WidgetSize.BASE_HEIGHT_DP
+        val w = hosted.shape.baseWidthDp
+        val h = hosted.shape.baseHeightDp
         view.updateAppWidgetSize(null, w, h, w, h)
         return view
     }
@@ -159,6 +159,11 @@ class WidgetSlotController(private val activity: Activity) {
 
     fun align(id: Int, alignment: WidgetAlignment) {
         repository.updateAlignment(id, alignment)
+        refresh()
+    }
+
+    fun reshape(id: Int, shape: WidgetShape) {
+        repository.updateShape(id, shape)
         refresh()
     }
 

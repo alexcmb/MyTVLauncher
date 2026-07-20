@@ -42,6 +42,9 @@
     <string name="widget_align_start">Gauche</string>
     <string name="widget_align_center">Milieu</string>
     <string name="widget_align_end">Droite</string>
+    <string name="widget_shape">Forme du widget</string>
+    <string name="widget_shape_wide">Large (16:9)</string>
+    <string name="widget_shape_square">Carré (1:1)</string>
     <string name="widget_limit_reached">Vous pouvez héberger jusqu\'à %1$d widgets</string>
     <string name="widget_size_xsmall">Très petit</string>
     <string name="widget_size_small">Petit</string>

@@ -18,6 +18,7 @@ import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import alexcmb.mytvlauncher.widget.WidgetShape
 import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
 import android.appwidget.AppWidgetManager
@@ -162,17 +163,19 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return
-    // to Home was what made the tab change hitch. Keyed by id — the host view is always built
-    // at the base size now (Compose scales it), so a resize no longer needs a fresh view.
-    private val hostViews = HashMap<Int, View>()
+    // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
+    // Home was what made the tab change hitch. Keyed by id and shape — a size (scale) change is
+    // just Compose scaling, but a shape change alters the size the widget is laid out at, so it
+    // needs a fresh view.
+    private val hostViews = HashMap<Int, Pair<WidgetShape, View>>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
         widgets = hosted.map { h ->
-            WidgetTile(h.id, h.size.scale, h.alignment) {
-                val view = hostViews[h.id] ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
+            WidgetTile(h.id, h.shape.baseWidthDp, h.shape.baseHeightDp, h.size.scale, h.alignment) {
+                val cached = hostViews[h.id]?.takeIf { it.first == h.shape }?.second
+                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = h.shape to it }
                 // It may still be attached to the AndroidView from the previous visit.
                 (view.parent as? ViewGroup)?.removeView(view)
                 view
@@ -246,6 +249,9 @@ class LauncherActivity : ComponentActivity() {
             }
             items += MenuItem(getString(R.string.widget_align)) {
                 pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
+            }
+            items += MenuItem(getString(R.string.widget_shape)) {
+                pickHostedWidget(R.string.widget_shape, ::showShapeMenu)
             }
             items += MenuItem(getString(R.string.widget_remove)) {
                 pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
@@ -433,6 +439,20 @@ class LauncherActivity : ComponentActivity() {
                 choice(R.string.widget_align_start, WidgetAlignment.START),
                 choice(R.string.widget_align_center, WidgetAlignment.CENTER),
                 choice(R.string.widget_align_end, WidgetAlignment.END),
+            ),
+        )
+    }
+
+    private fun showShapeMenu(id: Int) {
+        fun choice(label: Int, shape: WidgetShape) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.reshape(id, shape)
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_shape),
+            items = listOf(
+                choice(R.string.widget_shape_wide, WidgetShape.WIDE),
+                choice(R.string.widget_shape_square, WidgetShape.SQUARE),
             ),
         )
     }

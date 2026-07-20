@@ -72,4 +72,29 @@ class WidgetStorageTest {
             WidgetStorage.decode("5:LARGE:SIDEWAYS")
         )
     }
+
+    @Test
+    fun `round-trips the shape`() {
+        val widgets = listOf(
+            HostedWidget(1, WidgetSize.MEDIUM, WidgetAlignment.START, WidgetShape.WIDE),
+            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.CENTER, WidgetShape.SQUARE),
+        )
+        assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
+    }
+
+    @Test
+    fun `defaults to a wide shape for entries stored before it existed`() {
+        assertEquals(
+            listOf(HostedWidget(6, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.WIDE)),
+            WidgetStorage.decode("6:MEDIUM:END")
+        )
+    }
+
+    @Test
+    fun `falls back to a wide shape when the shape is unreadable`() {
+        assertEquals(
+            listOf(HostedWidget(7, WidgetSize.SMALL, WidgetAlignment.START, WidgetShape.WIDE)),
+            WidgetStorage.decode("7:SMALL:START:TRIANGLE")
+        )
+    }
 }

@@ -5,7 +5,6 @@ import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.widget.WidgetAlignment
-import alexcmb.mytvlauncher.widget.WidgetSize
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
@@ -94,9 +93,11 @@ private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its scale, where it sits, and a factory for its host view. */
+/** A widget to place on the hub: its base size, scale, where it sits, and a host-view factory. */
 data class WidgetTile(
     val id: Int,
+    val baseWidthDp: Int,
+    val baseHeightDp: Int,
     val scale: Float,
     val alignment: WidgetAlignment,
     val createView: () -> View,
@@ -321,7 +322,7 @@ private fun Hub(
     val bandRisePx = remember(widgets) {
         if (widgets.isEmpty()) 0f
         else with(density) {
-            (WidgetSize.BASE_HEIGHT_DP * widgets.maxOf { it.scale } + 24).dp.toPx()
+            (widgets.maxOf { it.baseHeightDp * it.scale } + 24).dp.toPx()
         }
     }
     val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
@@ -429,7 +430,7 @@ private fun WidgetSlot(
                 val slotDp = maxWidth.value
                 val spacing = 16f * (tiles.size - 1)
                 val intrinsic =
-                    tiles.sumOf { (WidgetSize.BASE_WIDTH_DP * it.scale).toDouble() }.toFloat() + spacing
+                    tiles.sumOf { (it.baseWidthDp * it.scale).toDouble() }.toFloat() + spacing
                 val fit = if (capped && intrinsic > slotDp) slotDp / intrinsic else 1f
                 WidgetZone(tiles, spotlight, focusedWidget, onFocused, fit, Modifier.align(Alignment.TopCenter))
             }
@@ -447,11 +448,13 @@ private fun WidgetZone(
     extraScale: Float,
     modifier: Modifier = Modifier,
 ) {
-    val baseW = WidgetSize.BASE_WIDTH_DP.dp
-    val baseH = WidgetSize.BASE_HEIGHT_DP.dp
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
-            key(tile.id) {
+            // Key on the base size too: changing shape gives a new node, so a fresh host view
+            // is built (and told) the new size instead of the cached one being reused.
+            key(tile.id, tile.baseWidthDp, tile.baseHeightDp) {
+                val baseW = tile.baseWidthDp.dp
+                val baseH = tile.baseHeightDp.dp
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight

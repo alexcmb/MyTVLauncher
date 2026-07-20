@@ -43,6 +43,9 @@
     <string name="widget_align_start">Left</string>
     <string name="widget_align_center">Centre</string>
     <string name="widget_align_end">Right</string>
+    <string name="widget_shape">Widget shape</string>
+    <string name="widget_shape_wide">Wide (16:9)</string>
+    <string name="widget_shape_square">Square (1:1)</string>
     <string name="widget_limit_reached">You can host up to %1$d widgets</string>
     <string name="widget_size_xsmall">Extra small</string>
     <string name="widget_size_small">Small</string>
