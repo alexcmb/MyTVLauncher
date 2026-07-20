@@ -13,6 +13,7 @@
     <string name="action_background">Background</string>
     <string name="action_card_size">Card size</string>
     <string name="action_display">Display</string>
+    <string name="action_widgets">Widgets</string>
     <string name="display_usage_count">Usage counter</string>
     <string name="display_app_names">App names</string>
     <string name="background_ambient">Ambient banner</string>

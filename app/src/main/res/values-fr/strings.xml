@@ -12,6 +12,7 @@
     <string name="action_background">Fond</string>
     <string name="action_card_size">Taille des cartes</string>
     <string name="action_display">Affichage</string>
+    <string name="action_widgets">Widgets</string>
     <string name="display_usage_count">Compteur d\'usage</string>
     <string name="display_app_names">Noms d\'apps</string>
     <string name="background_ambient">Bannière ambiante</string>

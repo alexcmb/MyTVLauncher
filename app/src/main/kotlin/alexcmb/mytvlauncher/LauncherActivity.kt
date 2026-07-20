@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -59,7 +60,21 @@ class LauncherActivity : ComponentActivity() {
     private val widgetSlot by lazy { WidgetSlotController(this) }
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
-    private var menu by mutableStateOf<MenuSpec?>(null)
+    // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
+    // closing the lot. Assigning `menu` drives it: null clears everything (a leaf action ran);
+    // a spec whose title matches the top refreshes that level (e.g. a toggle flipping); any
+    // other title pushes a new level.
+    private val menuStack = mutableStateListOf<MenuSpec>()
+    private var menu: MenuSpec?
+        get() = menuStack.lastOrNull()
+        set(value) {
+            when {
+                value == null -> menuStack.clear()
+                menuStack.lastOrNull()?.title == value.title ->
+                    menuStack[menuStack.lastIndex] = value
+                else -> menuStack.add(value)
+            }
+        }
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
     private var accent by mutableStateOf(AccentColor.INDIGO)
@@ -119,7 +134,8 @@ class LauncherActivity : ComponentActivity() {
                         onLongPress = ::showAppMenu,
                         onSettings = ::showSettingsMenu,
                     )
-                    menu?.let { TvMenu(it) { menu = null } }
+                    // Back pops one level; when the stack empties the menu is gone.
+                    menu?.let { spec -> TvMenu(spec) { menuStack.removeAt(menuStack.lastIndex) } }
                     namingCategoryFor?.let { shortcut ->
                         TvTextPrompt(
                             title = stringResource(R.string.category_new_title),
@@ -230,6 +246,7 @@ class LauncherActivity : ComponentActivity() {
     private fun showSettingsMenu() {
         val items = mutableListOf(
             MenuItem(getString(R.string.action_appearance)) { showAppearanceMenu() },
+            MenuItem(getString(R.string.action_widgets)) { showWidgetsMenu() },
             MenuItem(getString(R.string.action_android_settings)) {
                 menu = null
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
@@ -239,6 +256,18 @@ class LauncherActivity : ComponentActivity() {
                 checkForUpdates()
             },
         )
+        val hidden = viewModel.hiddenApps
+        if (hidden.isNotEmpty()) {
+            items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
+                showHiddenAppsMenu()
+            }
+        }
+        menu = MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    /** Everything about the widget band, kept off the top-level settings menu. */
+    private fun showWidgetsMenu() {
+        val items = mutableListOf<MenuItem>()
         // The band is capped, so only offer "add" while there's room for another.
         if (widgetSlot.canAddMore()) {
             items += MenuItem(getString(R.string.widget_add)) { showWidgetPicker() }
@@ -257,13 +286,7 @@ class LauncherActivity : ComponentActivity() {
                 pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
             }
         }
-        val hidden = viewModel.hiddenApps
-        if (hidden.isNotEmpty()) {
-            items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
-                showHiddenAppsMenu()
-            }
-        }
-        menu = MenuSpec(getString(R.string.action_settings), items)
+        menu = MenuSpec(getString(R.string.action_widgets), items)
     }
 
     private fun showAppearanceMenu() {
