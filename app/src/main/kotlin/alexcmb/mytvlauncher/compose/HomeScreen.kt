@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -397,8 +398,8 @@ private fun Hub(
                     }
                 },
                 modifier = Modifier
-                    .padding(start = 48.dp, bottom = 24.dp)
-                    .width(460.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 24.dp)
                     .graphicsLayer {
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
@@ -707,14 +708,14 @@ private fun NowPlayingCard(
     ) {
         Row(
             modifier = Modifier
-                .height(72.dp)
-                .padding(horizontal = 12.dp),
+                .height(58.dp)
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(40.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(Background),
                 contentAlignment = Alignment.Center,
@@ -732,20 +733,22 @@ private fun NowPlayingCard(
                         painter = painterResource(R.drawable.ic_music_note),
                         contentDescription = null,
                         tint = Muted,
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f)) {
+            // Wraps its text so the card is only as wide as it needs, capped so a very long
+            // title ellipsizes instead of stretching the card across the screen.
+            Column(modifier = Modifier.widthIn(max = 360.dp)) {
                 Text(
                     text = stringResource(R.string.now_playing).uppercase(),
                     color = LocalAccent.current,
-                    fontSize = 10.sp,
+                    fontSize = 9.sp,
                 )
                 Text(
                     text = nowPlaying.title,
                     color = Color.White,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -754,7 +757,7 @@ private fun NowPlayingCard(
                     Text(
                         text = it,
                         color = Muted,
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -766,7 +769,7 @@ private fun NowPlayingCard(
                 ),
                 contentDescription = null,
                 tint = Color.White,
-                modifier = Modifier.size(28.dp),
+                modifier = Modifier.size(24.dp),
             )
         }
     }
