@@ -363,7 +363,11 @@ private fun Hub(
         if (widgets.isEmpty()) 0f
         else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
     }
-    val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
+    // Slimmer favourites at rest so the shorter (16:9) row keeps clear of the screen's bottom
+    // edge, which TV overscan can eat into. They grow back to full size as the band collapses
+    // and the row rises into the freed space, where there's plenty of room.
+    val restFavouriteWidth = (cardSize.favouriteWidthDp - 40).dp
+    val cardWidth = lerp(restFavouriteWidth, (cardSize.favouriteWidthDp + 60).dp, collapse)
 
     Column(
         Modifier
