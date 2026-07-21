@@ -2,6 +2,7 @@
     <string name="title_apps">Applications</string>
     <string name="title_system">Système</string>
     <string name="title_home">Accueil</string>
+    <string name="title_sources">Sources</string>
     <string name="home_most_used">Les plus utilisées</string>
     <string name="home_opens_top">Ouverte %1$d fois · votre plus utilisée</string>
     <string name="home_opens_ranked">Ouverte %1$d fois · n°%2$d ici</string>

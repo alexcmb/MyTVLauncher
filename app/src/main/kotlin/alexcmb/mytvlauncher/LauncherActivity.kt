@@ -13,6 +13,8 @@ import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
 import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.source.TvSource
+import alexcmb.mytvlauncher.source.TvSourceController
 import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
@@ -65,6 +67,7 @@ class LauncherActivity : ComponentActivity() {
     private lateinit var viewModel: BrowseViewModel
     private val updateManager by lazy { UpdateManager(applicationContext) }
     private val widgetSlot by lazy { WidgetSlotController(this) }
+    private val sourceController by lazy { TvSourceController(this) }
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
     // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
@@ -88,6 +91,7 @@ class LauncherActivity : ComponentActivity() {
     /** A live widget resize in progress: its target, slider value, and panel label. */
     private data class ResizeSession(val id: Int, val percent: Int, val label: String)
     private var resizing by mutableStateOf<ResizeSession?>(null)
+    private var sources by mutableStateOf<List<TvSource>>(emptyList())
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
     private var clockShowSeconds by mutableStateOf(true)
@@ -112,6 +116,8 @@ class LauncherActivity : ComponentActivity() {
         showUsageCount = settings.showUsageCount()
         showAppLabels = settings.showAppLabels()
         widgetSlot.onChanged = { refreshWidgets() }
+        sourceController.onChanged = { sources = sourceController.sources() }
+        sources = sourceController.sources()
         if (savedInstanceState == null) {
             // Cold start only: clean widget ids left over from cancelled/interrupted adds.
             // Never mid-session — an add's configure screen can stop/recreate us, and pruning
@@ -129,7 +135,9 @@ class LauncherActivity : ComponentActivity() {
         })
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
-            val tabs = HomeTabs.from(groups, stringResource(R.string.title_home))
+            val tabs = HomeTabs.from(
+                groups, stringResource(R.string.title_home), sources, stringResource(R.string.title_sources),
+            )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
                 Box {
                     HomeScreen(
@@ -143,6 +151,7 @@ class LauncherActivity : ComponentActivity() {
                         showAppLabels = showAppLabels,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
+                        onOpenSource = sourceController::open,
                         onSettings = ::showSettingsMenu,
                     )
                     // Back pops one level; when the stack empties the menu is gone.
@@ -183,6 +192,8 @@ class LauncherActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         widgetSlot.startListening()
+        sourceController.startListening()
+        sources = sourceController.sources()
         refreshWidgets()
     }
 
@@ -194,6 +205,7 @@ class LauncherActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         widgetSlot.stopListening()
+        sourceController.stopListening()
     }
 
     @Deprecated("The widget bind and configure flows are driven by the legacy result API")

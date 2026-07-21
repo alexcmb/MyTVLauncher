@@ -4,6 +4,7 @@ import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
+import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.graphics.drawable.Drawable
 import android.view.View
@@ -130,6 +131,7 @@ fun HomeScreen(
     showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onOpenSource: (TvSource) -> Unit,
     onSettings: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -157,11 +159,11 @@ fun HomeScreen(
             if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
-                Hero(focused, tab?.shortcuts.orEmpty(), showUsageCount)
+                Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount)
                 when {
                     tab == null -> Unit
                     // The first tab is a hub: widgets and a few favourites, nothing endless.
-                    selectedTab == 0 -> Hub(
+                    selectedTab == 0 && tab is AppsTab -> Hub(
                         widgets = widgets,
                         favourites = tab.shortcuts.take(FAVOURITES),
                         cardSize = cardSize,
@@ -172,7 +174,8 @@ fun HomeScreen(
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
-                    else -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress) { focused = it }
+                    tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
+                    tab is AppsTab -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress) { focused = it }
                 }
             }
         }
@@ -531,6 +534,74 @@ private fun AppsGrid(
     ) {
         itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
             AppCard(shortcut, showAppLabels, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
+        }
+    }
+}
+
+/** The TV's external inputs (HDMI, AV, …); tapping one switches the TV to it. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SourcesGrid(
+    sources: List<TvSource>,
+    cardSize: CardSize,
+    tabsFocus: FocusRequester,
+    onOpen: (TvSource) -> Unit,
+) {
+    var focusedIndex by remember { mutableStateOf(-1) }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(cardSize.columns),
+        contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .focusGroup()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
+                    focusedIndex in 0 until cardSize.columns
+                ) {
+                    tabsFocus.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
+        itemsIndexed(sources, key = { _, source -> source.id }) { index, source ->
+            SourceCard(source, onOpen) { focusedIndex = index }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: () -> Unit) {
+    Card(
+        onClick = { onOpen(source) },
+        scale = CardDefaults.scale(focusedScale = 1.08f),
+        border = CardDefaults.border(
+            focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
+        ),
+        modifier = Modifier
+            .aspectRatio(16f / 9f)
+            .onFocusChanged { if (it.isFocused) onFocus() },
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(
+                    if (source.isHdmi) R.drawable.ic_source_hdmi else R.drawable.ic_source_av
+                ),
+                contentDescription = null,
+                tint = Muted,
+                modifier = Modifier.size(40.dp),
+            )
+            Text(
+                text = source.label,
+                color = Color.White,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            )
         }
     }
 }
