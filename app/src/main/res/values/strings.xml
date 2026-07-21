@@ -63,6 +63,10 @@
     <string name="widget_configure_failed">Widget setup was cancelled</string>
     <string name="widget_permission_title">Widgets need a one-time permission</string>
     <string name="widget_permission_message">Android only lets a launcher add widgets once it has been allowed to, and this device has no screen to ask for it.\n\nFrom a computer with ADB connected to this TV, run:\n\n%1$s\n\nThen add the widget again.</string>
+    <string name="now_playing">Now playing</string>
+    <string name="action_now_playing">Now playing</string>
+    <string name="now_playing_permission_title">Now Playing needs notification access</string>
+    <string name="now_playing_permission_message">To show what\'s playing across your apps, the launcher needs notification access, and this TV has no on-screen way to grant it.\n\nFrom a computer with ADB connected to this TV, run:\n\n%1$s\n\nThen come back — the card appears on the Home hub.</string>
     <string name="menu_change_category">Change category</string>
     <string name="category_new">New category…</string>
     <string name="category_new_title">New category</string>

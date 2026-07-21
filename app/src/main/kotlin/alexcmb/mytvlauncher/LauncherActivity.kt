@@ -12,6 +12,9 @@ import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
 import alexcmb.mytvlauncher.compose.LocalAccent
+import alexcmb.mytvlauncher.media.NowPlaying
+import alexcmb.mytvlauncher.media.NowPlayingController
+import alexcmb.mytvlauncher.media.NowPlayingListenerService
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.source.TvSourceController
@@ -30,8 +33,10 @@ import alexcmb.mytvlauncher.widget.layoutHeightDp
 import alexcmb.mytvlauncher.widget.layoutWidthDp
 import alexcmb.mytvlauncher.widget.tileHeightDp
 import alexcmb.mytvlauncher.widget.tileWidthDp
+import android.app.AlertDialog
 import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -68,6 +73,7 @@ class LauncherActivity : ComponentActivity() {
     private val updateManager by lazy { UpdateManager(applicationContext) }
     private val widgetSlot by lazy { WidgetSlotController(this) }
     private val sourceController by lazy { TvSourceController(this) }
+    private val nowPlayingController by lazy { NowPlayingController(this) }
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
     // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
@@ -92,6 +98,7 @@ class LauncherActivity : ComponentActivity() {
     private data class ResizeSession(val id: Int, val percent: Int, val label: String)
     private var resizing by mutableStateOf<ResizeSession?>(null)
     private var sources by mutableStateOf<List<TvSource>>(emptyList())
+    private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
     private var clockShowSeconds by mutableStateOf(true)
@@ -118,6 +125,7 @@ class LauncherActivity : ComponentActivity() {
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
+        nowPlayingController.onChanged = { nowPlaying = nowPlayingController.nowPlaying() }
         if (savedInstanceState == null) {
             // Cold start only: clean widget ids left over from cancelled/interrupted adds.
             // Never mid-session — an add's configure screen can stop/recreate us, and pruning
@@ -149,9 +157,12 @@ class LauncherActivity : ComponentActivity() {
                         accentAuto = accentAuto,
                         showUsageCount = showUsageCount,
                         showAppLabels = showAppLabels,
+                        nowPlaying = nowPlaying,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
                         onOpenSource = sourceController::open,
+                        onPlayPause = nowPlayingController::playPause,
+                        onOpenNowPlaying = nowPlayingController::openApp,
                         onSettings = ::showSettingsMenu,
                     )
                     // Back pops one level; when the stack empties the menu is gone.
@@ -193,7 +204,9 @@ class LauncherActivity : ComponentActivity() {
         super.onStart()
         widgetSlot.startListening()
         sourceController.startListening()
+        nowPlayingController.startListening()
         sources = sourceController.sources()
+        nowPlaying = nowPlayingController.nowPlaying()
         refreshWidgets()
     }
 
@@ -206,6 +219,7 @@ class LauncherActivity : ComponentActivity() {
         super.onStop()
         widgetSlot.stopListening()
         sourceController.stopListening()
+        nowPlayingController.stopListening()
     }
 
     @Deprecated("The widget bind and configure flows are driven by the legacy result API")
@@ -320,6 +334,10 @@ class LauncherActivity : ComponentActivity() {
                 checkForUpdates()
             },
         )
+        // Only offered until it's granted; once the card can read sessions there's nothing to do.
+        if (!nowPlayingController.hasAccess()) {
+            items += MenuItem(getString(R.string.action_now_playing)) { showNowPlayingHelp() }
+        }
         val hidden = viewModel.hiddenApps
         if (hidden.isNotEmpty()) {
             items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
@@ -327,6 +345,18 @@ class LauncherActivity : ComponentActivity() {
             }
         }
         menu = MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    /** Spells out the adb grant for notification access, since the TV can't ask on screen. */
+    private fun showNowPlayingHelp() {
+        menu = null
+        val component = ComponentName(this, NowPlayingListenerService::class.java)
+        val command = "adb shell cmd notification allow_listener ${component.flattenToShortString()}"
+        AlertDialog.Builder(this)
+            .setTitle(R.string.now_playing_permission_title)
+            .setMessage(getString(R.string.now_playing_permission_message, command))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     /** Everything about the widget band, kept off the top-level settings menu. */

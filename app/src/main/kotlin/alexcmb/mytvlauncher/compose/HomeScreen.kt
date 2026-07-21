@@ -1,6 +1,7 @@
 package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
+import alexcmb.mytvlauncher.media.NowPlaying
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
@@ -50,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -69,6 +71,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -132,9 +135,12 @@ fun HomeScreen(
     accentAuto: Boolean,
     showUsageCount: Boolean,
     showAppLabels: Boolean,
+    nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onOpenSource: (TvSource) -> Unit,
+    onPlayPause: () -> Unit,
+    onOpenNowPlaying: () -> Unit,
     onSettings: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -172,8 +178,11 @@ fun HomeScreen(
                         cardSize = cardSize,
                         tabsFocus = tabsFocus,
                         showAppLabels = showAppLabels,
+                        nowPlaying = nowPlaying,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
+                        onPlayPause = onPlayPause,
+                        onOpenNowPlaying = onOpenNowPlaying,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
@@ -311,8 +320,11 @@ private fun Hub(
     cardSize: CardSize,
     tabsFocus: FocusRequester,
     showAppLabels: Boolean,
+    nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onPlayPause: () -> Unit,
+    onOpenNowPlaying: () -> Unit,
     onFocus: (Shortcut) -> Unit,
     onWidgetsFocused: () -> Unit,
 ) {
@@ -322,6 +334,9 @@ private fun Hub(
     var appsFocused by remember { mutableStateOf(false) }
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
+    // The now-playing card sits above the widgets; track its focus so DPAD-up chains correctly.
+    var nowPlayingFocused by remember { mutableStateOf(false) }
+    val nowPlayingFocus = remember { FocusRequester() }
     val collapse by animateFloatAsState(
         targetValue = if (appsFocused && widgets.isNotEmpty()) 1f else 0f,
         animationSpec = tween(durationMillis = 260),
@@ -345,20 +360,51 @@ private fun Hub(
             // its clip bounds out at the screen edge so a focused card can scale up without
             // being clipped. The 48dp margin is applied per child instead.
             .focusGroup()
-            // DPAD-up from the top of the hub goes to the tabs, not the (spatially closer)
-            // settings orb. Only redirect from the top row: a focused widget, or the
-            // favourites when there are no widgets above them. A previewed key so it wins
-            // even over an embedded widget view that might otherwise swallow the press.
+            // DPAD-up walks one level up the hub: favourites → widgets → now-playing → tabs.
+            // The now-playing card and the tabs are reached by an explicit request (the tabs
+            // are centred, so plain spatial search would drift to the settings orb). A previewed
+            // key so it wins even over an embedded widget view that might swallow the press.
             .onPreviewKeyEvent { event ->
-                val atTop = focusedWidget != null || widgets.isEmpty()
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp && atTop) {
-                    tabsFocus.requestFocus()
+                if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
+                    return@onPreviewKeyEvent false
+                }
+                val target = when {
+                    nowPlayingFocused -> tabsFocus
+                    focusedWidget != null -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
+                    widgets.isEmpty() -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
+                    else -> null // favourites with widgets above: let spatial nav reach them
+                }
+                if (target != null) {
+                    target.requestFocus()
                     true
                 } else {
                     false
                 }
             },
     ) {
+        if (nowPlaying != null) {
+            NowPlayingCard(
+                nowPlaying = nowPlaying,
+                focusRequester = nowPlayingFocus,
+                onPlayPause = onPlayPause,
+                onOpen = onOpenNowPlaying,
+                onFocusChanged = { focused ->
+                    nowPlayingFocused = focused
+                    if (focused) {
+                        appsFocused = false
+                        // Not an app: drop the app backdrop/hero back to their idle state.
+                        onWidgetsFocused()
+                    }
+                },
+                modifier = Modifier
+                    .padding(start = 48.dp, bottom = 16.dp)
+                    .width(360.dp)
+                    .graphicsLayer {
+                        alpha = 1f - collapse
+                        translationY = -collapse * bandRisePx
+                    },
+            )
+        }
         if (widgets.isNotEmpty()) {
             val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
             val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
@@ -625,6 +671,100 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The TV's active media session on the hub: album art, title, artist, and its play state.
+ * OK toggles play/pause; a long press opens the app that owns the session.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun NowPlayingCard(
+    nowPlaying: NowPlaying,
+    focusRequester: FocusRequester,
+    onPlayPause: () -> Unit,
+    onOpen: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        onClick = onPlayPause,
+        onLongClick = onOpen,
+        scale = CardDefaults.scale(focusedScale = 1.04f),
+        colors = CardDefaults.colors(
+            containerColor = SourceSurface,
+            focusedContainerColor = SourceSurfaceFocused,
+        ),
+        border = CardDefaults.border(
+            focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
+        ),
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocusChanged(it.isFocused) },
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Background),
+                contentAlignment = Alignment.Center,
+            ) {
+                val art = nowPlaying.art
+                if (art != null) {
+                    Image(
+                        bitmap = art.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_music_note),
+                        contentDescription = null,
+                        tint = Muted,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.now_playing).uppercase(),
+                    color = LocalAccent.current,
+                    fontSize = 10.sp,
+                )
+                Text(
+                    text = nowPlaying.title,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                nowPlaying.subtitle?.let {
+                    Text(
+                        text = it,
+                        color = Muted,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(
+                painter = painterResource(
+                    if (nowPlaying.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                ),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp),
             )
         }
     }

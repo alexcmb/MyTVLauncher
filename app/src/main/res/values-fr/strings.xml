@@ -62,6 +62,10 @@
     <string name="widget_configure_failed">Configuration du widget annulée</string>
     <string name="widget_permission_title">Les widgets nécessitent une autorisation unique</string>
     <string name="widget_permission_message">Android n\'autorise un launcher à ajouter des widgets qu\'après y avoir été autorisé, et cet appareil n\'a pas d\'écran pour le demander.\n\nDepuis un ordinateur avec ADB connecté à cette TV, exécutez :\n\n%1$s\n\nPuis ajoutez de nouveau le widget.</string>
+    <string name="now_playing">Lecture en cours</string>
+    <string name="action_now_playing">Lecture en cours</string>
+    <string name="now_playing_permission_title">La lecture en cours nécessite l\'accès aux notifications</string>
+    <string name="now_playing_permission_message">Pour afficher ce qui joue dans vos apps, le launcher a besoin de l\'accès aux notifications, et cette TV n\'a pas d\'écran pour l\'accorder.\n\nDepuis un ordinateur avec ADB connecté à cette TV, exécutez :\n\n%1$s\n\nRevenez ensuite — la carte apparaît sur le Hub d\'accueil.</string>
     <string name="menu_change_category">Changer de catégorie</string>
     <string name="category_new">Nouvelle catégorie…</string>
     <string name="category_new_title">Nouvelle catégorie</string>

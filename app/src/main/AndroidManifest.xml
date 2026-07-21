@@ -36,6 +36,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Empty listener; it only exists to hold the notification-access grant that unlocks
+             reading other apps' media sessions for the "now playing" card. -->
+        <service
+            android:name=".media.NowPlayingListenerService"
+            android:exported="false"
+            android:label="@string/now_playing"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
