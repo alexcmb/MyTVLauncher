@@ -409,7 +409,7 @@ private fun Hub(
                 },
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 12.dp)
                     .graphicsLayer {
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
@@ -436,7 +436,7 @@ private fun Hub(
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
                     }
-                    .padding(start = 48.dp, end = 48.dp, bottom = 24.dp),
+                    .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
             ) {
                 // Three equal thirds; each zone is centred in its own, so a CENTER widget sits
                 // at screen centre and START/END sit centred on their sides. Widgets render at
@@ -718,7 +718,7 @@ private fun NowPlayingCard(
     ) {
         Row(
             modifier = Modifier
-                .height(58.dp)
+                .height(52.dp)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
