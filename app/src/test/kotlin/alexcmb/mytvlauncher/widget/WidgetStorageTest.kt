@@ -8,19 +8,15 @@ class WidgetStorageTest {
     @Test
     fun `survives a round trip`() {
         val widgets = listOf(
-            HostedWidget(12, WidgetSize.SMALL),
-            HostedWidget(13, WidgetSize.LARGE),
+            HostedWidget(12, 80),
+            HostedWidget(13, 130),
         )
         assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
     }
 
     @Test
     fun `keeps the order the widgets were added in`() {
-        val widgets = listOf(
-            HostedWidget(9, WidgetSize.MEDIUM),
-            HostedWidget(3, WidgetSize.MEDIUM),
-            HostedWidget(7, WidgetSize.MEDIUM),
-        )
+        val widgets = listOf(HostedWidget(9), HostedWidget(3), HostedWidget(7))
         assertEquals(listOf(9, 3, 7), WidgetStorage.decode(WidgetStorage.encode(widgets)).map { it.id })
     }
 
@@ -31,77 +27,72 @@ class WidgetStorageTest {
     }
 
     @Test
-    fun `falls back to a medium widget when the size is unreadable`() {
+    fun `falls back to full scale when the size is unreadable`() {
+        assertEquals(listOf(HostedWidget(4, 100)), WidgetStorage.decode("4:ENORMOUS"))
+        assertEquals(listOf(HostedWidget(4, 100)), WidgetStorage.decode("4"))
+    }
+
+    @Test
+    fun `migrates the five legacy size names to their percents`() {
         assertEquals(
-            listOf(HostedWidget(4, WidgetSize.MEDIUM)),
-            WidgetStorage.decode("4:ENORMOUS")
+            listOf(60, 80, 100, 130, 160),
+            WidgetStorage.decode("1:XSMALL,2:SMALL,3:MEDIUM,4:LARGE,5:XLARGE").map { it.scalePercent },
         )
-        assertEquals(listOf(HostedWidget(4, WidgetSize.MEDIUM)), WidgetStorage.decode("4"))
+    }
+
+    @Test
+    fun `clamps a stored percent to the slider's bounds`() {
+        assertEquals(listOf(HostedWidget(4, 200)), WidgetStorage.decode("4:999"))
+        assertEquals(listOf(HostedWidget(4, 50)), WidgetStorage.decode("4:5"))
     }
 
     @Test
     fun `drops an unreadable entry instead of the whole band`() {
         assertEquals(
-            listOf(HostedWidget(4, WidgetSize.SMALL), HostedWidget(6, WidgetSize.LARGE)),
-            WidgetStorage.decode("4:SMALL,rubbish,6:LARGE")
+            listOf(HostedWidget(4, 80), HostedWidget(6, 130)),
+            WidgetStorage.decode("4:80,rubbish,6:130")
         )
     }
 
     @Test
     fun `round-trips the alignment`() {
         val widgets = listOf(
-            HostedWidget(1, WidgetSize.SMALL, WidgetAlignment.START),
-            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.CENTER),
-            HostedWidget(3, WidgetSize.LARGE, WidgetAlignment.END),
+            HostedWidget(1, 80, WidgetAlignment.START),
+            HostedWidget(2, 100, WidgetAlignment.CENTER),
+            HostedWidget(3, 130, WidgetAlignment.END),
         )
         assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
     }
 
     @Test
-    fun `defaults to start alignment for entries stored before it existed`() {
-        assertEquals(
-            listOf(HostedWidget(4, WidgetSize.SMALL, WidgetAlignment.START)),
-            WidgetStorage.decode("4:SMALL")
-        )
-    }
-
-    @Test
     fun `falls back to start when the alignment is unreadable`() {
         assertEquals(
-            listOf(HostedWidget(5, WidgetSize.LARGE, WidgetAlignment.START)),
-            WidgetStorage.decode("5:LARGE:SIDEWAYS")
+            listOf(HostedWidget(5, 130, WidgetAlignment.START)),
+            WidgetStorage.decode("5:130:SIDEWAYS")
         )
     }
 
     @Test
     fun `round-trips every shape`() {
         val widgets = WidgetShape.entries.mapIndexed { i, shape ->
-            HostedWidget(i, WidgetSize.MEDIUM, WidgetAlignment.START, shape)
+            HostedWidget(i, 100, WidgetAlignment.START, shape)
         }
         assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
     }
 
     @Test
-    fun `defaults to a wide shape for entries stored before it existed`() {
-        assertEquals(
-            listOf(HostedWidget(6, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.WIDE)),
-            WidgetStorage.decode("6:MEDIUM:END")
-        )
-    }
-
-    @Test
     fun `falls back to a wide shape when the shape is unreadable`() {
         assertEquals(
-            listOf(HostedWidget(7, WidgetSize.SMALL, WidgetAlignment.START, WidgetShape.WIDE)),
-            WidgetStorage.decode("7:SMALL:START:TRIANGLE")
+            listOf(HostedWidget(7, 80, WidgetAlignment.START, WidgetShape.WIDE)),
+            WidgetStorage.decode("7:80:START:TRIANGLE")
         )
     }
 
     @Test
     fun `round-trips the fit`() {
         val widgets = listOf(
-            HostedWidget(1, WidgetSize.MEDIUM, WidgetAlignment.START, WidgetShape.WIDE, WidgetFit.NATIVE),
-            HostedWidget(2, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.FIT),
+            HostedWidget(1, 100, WidgetAlignment.START, WidgetShape.WIDE, WidgetFit.NATIVE),
+            HostedWidget(2, 100, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.FIT),
         )
         assertEquals(widgets, WidgetStorage.decode(WidgetStorage.encode(widgets)))
     }
@@ -109,8 +100,8 @@ class WidgetStorageTest {
     @Test
     fun `defaults to native fit for entries stored before it existed`() {
         assertEquals(
-            listOf(HostedWidget(8, WidgetSize.MEDIUM, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.NATIVE)),
-            WidgetStorage.decode("8:MEDIUM:END:SQUARE")
+            listOf(HostedWidget(8, 100, WidgetAlignment.END, WidgetShape.SQUARE, WidgetFit.NATIVE)),
+            WidgetStorage.decode("8:100:END:SQUARE")
         )
     }
 }

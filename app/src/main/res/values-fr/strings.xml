@@ -52,11 +52,10 @@
     <string name="widget_render_native">Natif (peut rogner)</string>
     <string name="widget_render_fit">Ajusté (toujours entier)</string>
     <string name="widget_limit_reached">Vous pouvez héberger jusqu\'à %1$d widgets</string>
-    <string name="widget_size_xsmall">Très petit</string>
+    <string name="resize_hint">◀ ▶ Ajuster · OK Valider · Retour Annuler</string>
     <string name="widget_size_small">Petit</string>
     <string name="widget_size_medium">Moyen</string>
     <string name="widget_size_large">Grand</string>
-    <string name="widget_size_xlarge">Très grand</string>
     <string name="widget_none_available">Aucun widget disponible sur cet appareil</string>
     <string name="widget_bind_refused">Widget non autorisé</string>
     <string name="widget_configure_failed">Configuration du widget annulée</string>

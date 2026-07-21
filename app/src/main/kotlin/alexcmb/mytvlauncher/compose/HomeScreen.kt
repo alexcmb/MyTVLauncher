@@ -96,7 +96,9 @@ private const val FAVOURITES = 8
 
 /**
  * A widget to place on the hub: its tile footprint, the size its host view is laid out at
- * (equal in NATIVE fit, larger in FIT so it can be scaled down), where it sits, and a factory.
+ * (equal in NATIVE fit, larger in FIT so it can be scaled down), where it sits, a factory,
+ * and a hook that tells the (kept-alive) view its current size — that's what lets a live
+ * resize swap the widget's layout variants without rebuilding the view each step.
  */
 data class WidgetTile(
     val id: Int,
@@ -106,6 +108,7 @@ data class WidgetTile(
     val layoutHeightDp: Int,
     val alignment: WidgetAlignment,
     val createView: () -> View,
+    val applySize: (View) -> Unit,
 )
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
@@ -459,9 +462,10 @@ private fun WidgetZone(
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
-            // Key on both sizes: a change to either gives a new node, so a fresh host view is
-            // built at (and told) the new layout size.
-            key(tile.id, tile.widthDp, tile.heightDp, tile.layoutWidthDp, tile.layoutHeightDp) {
+            // Keyed by id only: the host view survives size and shape changes and is resized
+            // in place (applySize tells it each new size), which keeps a live slider resize
+            // smooth and lets the widget swap its layout variants as it grows.
+            key(tile.id) {
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
@@ -482,6 +486,7 @@ private fun WidgetZone(
                     val sy = tile.heightDp.toFloat() / tile.layoutHeightDp
                     AndroidView(
                         factory = { tile.createView() },
+                        update = { tile.applySize(it) },
                         modifier = Modifier
                             .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
                             .graphicsLayer { scaleX = sx; scaleY = sy },

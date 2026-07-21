@@ -5,7 +5,6 @@ import alexcmb.mytvlauncher.widget.HostedWidget
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import alexcmb.mytvlauncher.widget.WidgetFit
 import alexcmb.mytvlauncher.widget.WidgetShape
-import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetStorage
 import android.content.Context
 
@@ -24,8 +23,8 @@ class WidgetRepository private constructor(context: Context) {
 
     fun remove(id: Int) = save(query().filterNot { it.id == id })
 
-    fun updateSize(id: Int, size: WidgetSize) =
-        save(query().map { if (it.id == id) it.copy(size = size) else it })
+    fun updateScale(id: Int, scalePercent: Int) =
+        save(query().map { if (it.id == id) it.copy(scalePercent = scalePercent) else it })
 
     fun updateAlignment(id: Int, alignment: WidgetAlignment) =
         save(query().map { if (it.id == id) it.copy(alignment = alignment) else it })

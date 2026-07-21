@@ -1,18 +1,12 @@
 package alexcmb.mytvlauncher.widget
 
 /**
- * How big a hosted widget is shown. Every widget is hosted at its shape's base size (so its
- * RemoteViews lay out comfortably) and then scaled by this factor — scaling the rendered
- * result rather than shrinking the layout, which most widgets refuse to do (they'd just
- * clip). 1f is the base; below it shrinks, above it grows.
+ * How big a hosted widget is shown: a percentage of its shape's base size, adjusted live
+ * with a slider. Bounds keep a widget both usable and on-screen.
  */
-enum class WidgetSize(val scale: Float) {
-    XSMALL(0.6f),
-    SMALL(0.8f),
-    MEDIUM(1f),
-    LARGE(1.3f),
-    XLARGE(1.6f),
-}
+const val MIN_SCALE_PERCENT = 50
+const val MAX_SCALE_PERCENT = 200
+const val SCALE_STEP_PERCENT = 10
 
 /**
  * The aspect a hosted widget is laid out at, before the size scale — widgets are built to
@@ -55,15 +49,15 @@ fun nextFreeAlignment(taken: Collection<WidgetAlignment>): WidgetAlignment =
 /** A widget the launcher hosts, and the size, placement, shape and fit the user gave it. */
 data class HostedWidget(
     val id: Int,
-    val size: WidgetSize,
+    val scalePercent: Int = 100,
     val alignment: WidgetAlignment = WidgetAlignment.START,
     val shape: WidgetShape = WidgetShape.WIDE,
     val fit: WidgetFit = WidgetFit.NATIVE,
 )
 
 /** The footprint the widget takes in the band: shape base times the size scale. */
-fun HostedWidget.tileWidthDp(): Int = (shape.baseWidthDp * size.scale).toInt()
-fun HostedWidget.tileHeightDp(): Int = (shape.baseHeightDp * size.scale).toInt()
+fun HostedWidget.tileWidthDp(): Int = shape.baseWidthDp * scalePercent / 100
+fun HostedWidget.tileHeightDp(): Int = shape.baseHeightDp * scalePercent / 100
 
 /**
  * The size the host view is actually laid out at (and told). NATIVE lays out at the footprint
@@ -79,7 +73,7 @@ fun HostedWidget.layoutHeightDp(): Int =
 object WidgetStorage {
     fun encode(widgets: List<HostedWidget>): String =
         widgets.joinToString(SEPARATOR) {
-            "${it.id}$FIELD${it.size.name}$FIELD${it.alignment.name}$FIELD${it.shape.name}$FIELD${it.fit.name}"
+            "${it.id}$FIELD${it.scalePercent}$FIELD${it.alignment.name}$FIELD${it.shape.name}$FIELD${it.fit.name}"
         }
 
     /** Skips entries it can't read rather than losing the whole band to one bad one. */
@@ -87,9 +81,7 @@ object WidgetStorage {
         stored.split(SEPARATOR).mapNotNull { entry ->
             val fields = entry.split(FIELD)
             val id = fields.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
-            val size = fields.getOrNull(1)
-                ?.let { name -> WidgetSize.entries.firstOrNull { it.name == name } }
-                ?: WidgetSize.MEDIUM
+            val scale = fields.getOrNull(1)?.let(::decodeScale) ?: 100
             // Fields added over time; entries stored before each default sensibly.
             val alignment = fields.getOrNull(2)
                 ?.let { name -> WidgetAlignment.entries.firstOrNull { it.name == name } }
@@ -100,8 +92,20 @@ object WidgetStorage {
             val fit = fields.getOrNull(4)
                 ?.let { name -> WidgetFit.entries.firstOrNull { it.name == name } }
                 ?: WidgetFit.NATIVE
-            HostedWidget(id, size, alignment, shape, fit)
+            HostedWidget(id, scale, alignment, shape, fit)
         }
+
+    /** Scales were once an enum of five names; map those to their percent equivalents. */
+    private fun decodeScale(field: String): Int {
+        field.toIntOrNull()?.let { return it.coerceIn(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT) }
+        return when (field) {
+            "XSMALL" -> 60
+            "SMALL" -> 80
+            "LARGE" -> 130
+            "XLARGE" -> 160
+            else -> 100
+        }
+    }
 
     private const val SEPARATOR = ","
     private const val FIELD = ":"

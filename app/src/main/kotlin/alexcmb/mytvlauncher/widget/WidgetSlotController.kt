@@ -5,6 +5,7 @@ import alexcmb.mytvlauncher.repository.WidgetRepository
 import android.app.Activity
 import android.app.AlertDialog
 import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
@@ -152,9 +153,22 @@ class WidgetSlotController(private val activity: Activity) {
         refresh()
     }
 
-    fun resize(id: Int, size: WidgetSize) {
-        repository.updateSize(id, size)
+    fun rescale(id: Int, scalePercent: Int) {
+        repository.updateScale(id, scalePercent.coerceIn(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT))
         refresh()
+    }
+
+    /** The stored scale of one hosted widget, for seeding the live-resize slider. */
+    fun scaleOf(id: Int): Int =
+        repository.query().firstOrNull { it.id == id }?.scalePercent ?: 100
+
+    /**
+     * Tells a host view the size it is now displayed at, so the provider can swap in the
+     * layout variant that matches. Used during live resize, where the view is kept and
+     * resized in place rather than rebuilt on every step.
+     */
+    fun tellSize(view: View, widthDp: Int, heightDp: Int) {
+        (view as? AppWidgetHostView)?.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
     }
 
     fun align(id: Int, alignment: WidgetAlignment) {
@@ -224,7 +238,7 @@ class WidgetSlotController(private val activity: Activity) {
         // Drop the new widget into the first free zone, so successive adds fill left, then
         // centre, then right, instead of piling up on the left.
         val alignment = nextFreeAlignment(repository.query().map { it.alignment })
-        repository.add(HostedWidget(id, WidgetSize.MEDIUM, alignment))
+        repository.add(HostedWidget(id, alignment = alignment))
         pendingId = NO_WIDGET
         refresh()
         Log.i(TAG, "Hosting widget $id in $alignment")

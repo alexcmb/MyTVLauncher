@@ -7,6 +7,7 @@ import alexcmb.mytvlauncher.compose.HomeTabs
 import alexcmb.mytvlauncher.compose.MenuItem
 import alexcmb.mytvlauncher.compose.MenuSpec
 import alexcmb.mytvlauncher.compose.TvMenu
+import alexcmb.mytvlauncher.compose.TvResizeOverlay
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
@@ -17,10 +18,11 @@ import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.widget.MAX_SCALE_PERCENT
+import alexcmb.mytvlauncher.widget.MIN_SCALE_PERCENT
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import alexcmb.mytvlauncher.widget.WidgetFit
 import alexcmb.mytvlauncher.widget.WidgetShape
-import alexcmb.mytvlauncher.widget.WidgetSize
 import alexcmb.mytvlauncher.widget.WidgetSlotController
 import alexcmb.mytvlauncher.widget.layoutHeightDp
 import alexcmb.mytvlauncher.widget.layoutWidthDp
@@ -82,6 +84,10 @@ class LauncherActivity : ComponentActivity() {
         }
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
+
+    /** A live widget resize in progress: its target, slider value, and panel label. */
+    private data class ResizeSession(val id: Int, val percent: Int, val label: String)
+    private var resizing by mutableStateOf<ResizeSession?>(null)
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
     private var clockShowSeconds by mutableStateOf(true)
@@ -141,6 +147,26 @@ class LauncherActivity : ComponentActivity() {
                     )
                     // Back pops one level; when the stack empties the menu is gone.
                     menu?.let { spec -> TvMenu(spec) { menuStack.removeAt(menuStack.lastIndex) } }
+                    resizing?.let { session ->
+                        TvResizeOverlay(
+                            label = session.label,
+                            percent = session.percent,
+                            onAdjust = { delta ->
+                                val next = (session.percent + delta)
+                                    .coerceIn(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT)
+                                resizing = session.copy(percent = next)
+                                refreshWidgets()
+                            },
+                            onCommit = {
+                                widgetSlot.rescale(session.id, session.percent)
+                                resizing = null
+                            },
+                            onCancel = {
+                                resizing = null
+                                refreshWidgets()
+                            },
+                        )
+                    }
                     namingCategoryFor?.let { shortcut ->
                         TvTextPrompt(
                             title = stringResource(R.string.category_new_title),
@@ -185,25 +211,44 @@ class LauncherActivity : ComponentActivity() {
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
-    // Home was what made the tab change hitch. Keyed by id and layout size — that's the size the
-    // view is actually built and told, so it's what a rebuild depends on.
-    private val hostViews = HashMap<Int, Pair<Pair<Int, Int>, View>>()
+    // Home was what made the tab change hitch. Keyed by id only — a size or shape change keeps
+    // the view and resizes it in place (applySize), which is what makes live resizing smooth.
+    private val hostViews = HashMap<Int, View>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
-        widgets = hosted.map { h ->
-            val layout = h.layoutWidthDp() to h.layoutHeightDp()
+        widgets = hosted.map { stored ->
+            // While this widget's slider is up, render at the slider value, not the stored one.
+            val h = resizing?.takeIf { it.id == stored.id }
+                ?.let { stored.copy(scalePercent = it.percent) } ?: stored
+            val layoutW = h.layoutWidthDp()
+            val layoutH = h.layoutHeightDp()
             WidgetTile(
-                h.id, h.tileWidthDp(), h.tileHeightDp(), h.layoutWidthDp(), h.layoutHeightDp(), h.alignment,
-            ) {
-                val cached = hostViews[h.id]?.takeIf { it.first == layout }?.second
-                val view = cached ?: widgetSlot.createHostView(h).also { hostViews[h.id] = layout to it }
-                // It may still be attached to the AndroidView from the previous visit.
-                (view.parent as? ViewGroup)?.removeView(view)
-                view
-            }
+                id = h.id,
+                widthDp = h.tileWidthDp(),
+                heightDp = h.tileHeightDp(),
+                layoutWidthDp = layoutW,
+                layoutHeightDp = layoutH,
+                alignment = h.alignment,
+                createView = {
+                    val view = hostViews[h.id]
+                        ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
+                    // It may still be attached to the AndroidView from the previous visit.
+                    (view.parent as? ViewGroup)?.removeView(view)
+                    view
+                },
+                applySize = { view -> widgetSlot.tellSize(view, layoutW, layoutH) },
+            )
         }
+    }
+
+    /** Opens the live resize slider for one widget; the menus close so the render is visible. */
+    private fun startResize(id: Int) {
+        val label = widgetSlot.hostedWidgets().firstOrNull { it.first == id }?.second?.toString()
+            ?: getString(R.string.widget_resize)
+        menu = null
+        resizing = ResizeSession(id, widgetSlot.scaleOf(id), label)
     }
 
     private fun showAppMenu(shortcut: Shortcut) {
@@ -281,7 +326,7 @@ class LauncherActivity : ComponentActivity() {
         }
         if (widgetSlot.hasWidgets()) {
             items += MenuItem(getString(R.string.widget_resize)) {
-                pickHostedWidget(R.string.widget_resize, ::showSizeMenu)
+                pickHostedWidget(R.string.widget_resize, ::startResize)
             }
             items += MenuItem(getString(R.string.widget_align)) {
                 pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
@@ -442,23 +487,6 @@ class LauncherActivity : ComponentActivity() {
                 items = hosted.map { (id, label) -> MenuItem(label.toString()) { action(id) } },
             )
         }
-    }
-
-    private fun showSizeMenu(id: Int) {
-        fun choice(label: Int, size: WidgetSize) = MenuItem(getString(label)) {
-            menu = null
-            widgetSlot.resize(id, size)
-        }
-        menu = MenuSpec(
-            title = getString(R.string.widget_resize),
-            items = listOf(
-                choice(R.string.widget_size_xsmall, WidgetSize.XSMALL),
-                choice(R.string.widget_size_small, WidgetSize.SMALL),
-                choice(R.string.widget_size_medium, WidgetSize.MEDIUM),
-                choice(R.string.widget_size_large, WidgetSize.LARGE),
-                choice(R.string.widget_size_xlarge, WidgetSize.XLARGE),
-            ),
-        )
     }
 
     private fun showAlignmentMenu(id: Int) {
