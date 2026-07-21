@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -357,6 +358,11 @@ private fun Hub(
 
     Column(
         Modifier
+            // Pull the hub up under the tabs: the Hero band above reserves room for a focused
+            // app's title, but the hub's top rows (now-playing, widgets) focus no app, so that
+            // band sits empty and leaves a big gap. Shift up to close it without shrinking the
+            // Hero, which still needs its height when a favourite below is focused.
+            .offset(y = (-44).dp)
             // No horizontal padding on the group itself: the scrollable favourites row needs
             // its clip bounds out at the screen edge so a focused card can scale up without
             // being clipped. The 48dp margin is applied per child instead.
