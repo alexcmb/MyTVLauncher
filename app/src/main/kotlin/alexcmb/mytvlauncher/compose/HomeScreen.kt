@@ -397,8 +397,8 @@ private fun Hub(
                     }
                 },
                 modifier = Modifier
-                    .padding(start = 48.dp, bottom = 16.dp)
-                    .width(360.dp)
+                    .padding(start = 48.dp, bottom = 24.dp)
+                    .width(460.dp)
                     .graphicsLayer {
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
@@ -706,9 +706,11 @@ private fun NowPlayingCard(
             .onFocusChanged { onFocusChanged(it.isFocused) },
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier
+                .height(72.dp)
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Box(
                 modifier = Modifier
