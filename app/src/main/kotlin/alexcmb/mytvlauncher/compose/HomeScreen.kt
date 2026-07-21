@@ -49,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -93,6 +94,8 @@ import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
 private val Muted = Color(0xFF9AA0B4)
+private val SourceSurface = Color(0xFF1C1C26)
+private val SourceSurfaceFocused = Color(0xFF2A2A38)
 private const val FAVOURITES = 8
 
 /**
@@ -578,6 +581,10 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
     Card(
         onClick = { onOpen(source) },
         scale = CardDefaults.scale(focusedScale = 1.08f),
+        colors = CardDefaults.colors(
+            containerColor = SourceSurface,
+            focusedContainerColor = SourceSurfaceFocused,
+        ),
         border = CardDefaults.border(
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
         ),
@@ -585,15 +592,32 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
             .aspectRatio(16f / 9f)
             .onFocusChanged { if (it.isFocused) onFocus() },
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        val iconTint = when {
+            source.isConnected -> Color.White
+            source.isAvailable -> Color.White.copy(alpha = 0.85f)
+            else -> Muted
+        }
+        Box(
+            Modifier.fillMaxSize().alpha(if (source.isAvailable) 1f else 0.55f),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 painter = painterResource(
                     if (source.isHdmi) R.drawable.ic_source_hdmi else R.drawable.ic_source_av
                 ),
                 contentDescription = null,
-                tint = Muted,
+                tint = iconTint,
                 modifier = Modifier.size(40.dp),
             )
+            if (source.isConnected) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(8.dp)
+                        .background(LocalAccent.current, CircleShape),
+                )
+            }
             Text(
                 text = source.label,
                 color = Color.White,

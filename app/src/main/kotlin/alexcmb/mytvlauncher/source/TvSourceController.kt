@@ -34,8 +34,20 @@ class TvSourceController(private val context: Context) {
         val tvm = tvInputManager ?: return emptyList()
         return tvm.tvInputList
             .filter { it.isPassthroughInput && it.type != TvInputInfo.TYPE_TUNER }
-            .map { TvSource(it.id, it.loadLabel(context)?.toString().orEmpty().ifBlank { it.id }, it.type) }
-            .sortedWith(compareByDescending<TvSource> { it.isHdmi }.thenBy { it.label })
+            .map {
+                TvSource(
+                    it.id,
+                    it.loadLabel(context)?.toString().orEmpty().ifBlank { it.id },
+                    it.type,
+                    tvm.getInputState(it.id),
+                )
+            }
+            // Connected inputs first, then standby, then unplugged; HDMI ahead of AV within each.
+            .sortedWith(
+                compareBy<TvSource> { it.state }
+                    .thenByDescending { it.isHdmi }
+                    .thenBy { it.label },
+            )
     }
 
     fun hasSources(): Boolean = sources().isNotEmpty()
