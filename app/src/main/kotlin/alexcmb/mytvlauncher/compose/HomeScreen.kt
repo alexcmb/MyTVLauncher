@@ -11,6 +11,7 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -29,7 +30,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -76,6 +76,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -170,7 +171,15 @@ fun HomeScreen(
             if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
-                Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount)
+                // The hero band reserves room for a focused app's name. On the hub its top rows
+                // (now-playing, widgets) focus no app, so collapse it there to hand that space to
+                // the content — otherwise a now-playing card plus this empty band push the
+                // favourites row off the bottom. Other tabs keep it fixed to avoid a jump.
+                val heroHeight by animateDpAsState(
+                    targetValue = if (selectedTab == 0 && focused == null) 0.dp else 64.dp,
+                    label = "hero",
+                )
+                Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount, heroHeight)
                 when {
                     tab == null -> Unit
                     // The first tab is a hub: widgets and a few favourites, nothing endless.
@@ -293,8 +302,8 @@ private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
 
 /** Surfaces the open count — data the launcher has always collected and never shown. */
 @Composable
-private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean) {
-    Column(Modifier.fillMaxWidth().height(64.dp).padding(start = 48.dp)) {
+private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean, height: Dp) {
+    Column(Modifier.fillMaxWidth().height(height).padding(start = 48.dp)) {
         if (focused != null) {
             Text(focused.title, color = Color.White, fontSize = 22.sp)
             if (showUsageCount) {
@@ -358,11 +367,6 @@ private fun Hub(
 
     Column(
         Modifier
-            // Pull the hub up under the tabs: the Hero band above reserves room for a focused
-            // app's title, but the hub's top rows (now-playing, widgets) focus no app, so that
-            // band sits empty and leaves a big gap. Shift up to close it without shrinking the
-            // Hero, which still needs its height when a favourite below is focused.
-            .offset(y = (-44).dp)
             // No horizontal padding on the group itself: the scrollable favourites row needs
             // its clip bounds out at the screen edge so a focused card can scale up without
             // being clipped. The 48dp margin is applied per child instead.
