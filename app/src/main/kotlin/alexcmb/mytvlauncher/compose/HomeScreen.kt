@@ -468,9 +468,11 @@ private fun Hub(
                     modifier = Modifier.padding(start = 48.dp, bottom = 8.dp),
                 )
                 // contentPadding, not an outer margin, so the row clips at the screen edge and
-                // the end cards can scale up on focus without their border being truncated.
+                // the end cards can scale up on focus without their border being truncated. The
+                // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
+                // or the row clips the top/bottom edges and the card loses its rounded corners.
                 LazyRow(
-                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 6.dp, bottom = 6.dp),
+                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(favourites, key = { it.id }) { shortcut ->
