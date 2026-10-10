@@ -38,6 +38,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -57,10 +58,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The launcher home, in Compose for TV. Overlay state (the menus, the rename prompt) lives
@@ -105,6 +110,10 @@ class LauncherActivity : ComponentActivity() {
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
+    private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
+    private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
+    // Live value of the background-brightness slider while it's open, else null.
+    private var backgroundAdjust by mutableStateOf<Int?>(null)
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
     private var showUsageCount by mutableStateOf(true)
     private var showAppLabels by mutableStateOf(false)
@@ -119,6 +128,8 @@ class LauncherActivity : ComponentActivity() {
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
         background = settings.background()
+        backgroundIntensity = settings.backgroundIntensity()
+        loadBackgroundImage()
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
         showAppLabels = settings.showAppLabels()
@@ -153,6 +164,8 @@ class LauncherActivity : ComponentActivity() {
                         widgets = widgets,
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
+                        backgroundImage = backgroundImage,
+                        backgroundIntensity = backgroundIntensity,
                         cardSize = cardSize,
                         accentAuto = accentAuto,
                         showUsageCount = showUsageCount,
@@ -184,6 +197,31 @@ class LauncherActivity : ComponentActivity() {
                             onCancel = {
                                 resizing = null
                                 refreshWidgets()
+                            },
+                        )
+                    }
+                    backgroundAdjust?.let { value ->
+                        TvResizeOverlay(
+                            label = stringResource(R.string.background_brightness),
+                            percent = value,
+                            min = SettingsRepository.BG_INTENSITY_MIN,
+                            max = SettingsRepository.BG_INTENSITY_MAX,
+                            step = SettingsRepository.BG_INTENSITY_STEP,
+                            onAdjust = { delta ->
+                                val next = (value + delta).coerceIn(
+                                    SettingsRepository.BG_INTENSITY_MIN,
+                                    SettingsRepository.BG_INTENSITY_MAX,
+                                )
+                                backgroundAdjust = next
+                                backgroundIntensity = next // live preview behind the slider
+                            },
+                            onCommit = {
+                                settings.setBackgroundIntensity(value)
+                                backgroundAdjust = null
+                            },
+                            onCancel = {
+                                backgroundAdjust = null
+                                backgroundIntensity = settings.backgroundIntensity()
                             },
                         )
                     }
@@ -233,7 +271,20 @@ class LauncherActivity : ComponentActivity() {
             WidgetSlotController.REQUEST_PICK -> widgetSlot.onPickResult(
                 granted, data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
             )
+            REQUEST_PICK_WALLPAPER -> if (granted) onWallpaperPicked(data)
         }
+    }
+
+    private fun onWallpaperPicked(data: Intent?) {
+        val uri = data?.data ?: return
+        // Persist read access so the wallpaper survives reboots.
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        settings.setBackgroundImageUri(uri.toString())
+        settings.setBackground(BackgroundStyle.WALLPAPER)
+        background = BackgroundStyle.WALLPAPER
+        loadBackgroundImage()
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
@@ -435,14 +486,66 @@ class LauncherActivity : ComponentActivity() {
             settings.setBackground(style)
             background = style
         }
-        menu = MenuSpec(
-            title = getString(R.string.action_background),
-            items = listOf(
-                choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
-                choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
-                choice(R.string.background_solid, BackgroundStyle.SOLID),
-            ),
+        val items = mutableListOf(
+            choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
+            choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
+            choice(R.string.background_solid, BackgroundStyle.SOLID),
+            MenuItem(getString(R.string.background_image)) { menu = null; pickWallpaper() },
+            MenuItem(getString(R.string.background_brightness)) {
+                menu = null
+                backgroundAdjust = settings.backgroundIntensity()
+            },
         )
+        if (settings.backgroundImageUri() != null) {
+            items += MenuItem(getString(R.string.background_image_remove)) {
+                menu = null
+                settings.setBackgroundImageUri(null)
+                backgroundImage = null
+                if (background == BackgroundStyle.WALLPAPER) {
+                    settings.setBackground(BackgroundStyle.AMBIENT)
+                    background = BackgroundStyle.AMBIENT
+                }
+            }
+        }
+        menu = MenuSpec(getString(R.string.action_background), items)
+    }
+
+    /** Opens the system document picker for an image to use as the wallpaper. */
+    private fun pickWallpaper() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_PICK_WALLPAPER)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No image picker on this device", e)
+            toast(R.string.background_no_picker)
+        }
+    }
+
+    /** Decodes the stored wallpaper off the main thread and publishes it to the UI. */
+    private fun loadBackgroundImage() {
+        val uri = settings.backgroundImageUri()?.let(Uri::parse)
+        if (uri == null) {
+            backgroundImage = null
+            return
+        }
+        lifecycleScope.launch {
+            backgroundImage = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                    var sample = 1
+                    while (bounds.outWidth > 0 && bounds.outWidth / sample > 2560) sample *= 2
+                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                    contentResolver.openInputStream(uri)
+                        ?.use { BitmapFactory.decodeStream(it, null, opts) }
+                        ?.asImageBitmap()
+                }.getOrNull()
+            }
+        }
     }
 
     private fun showClockMenu() {
@@ -652,6 +755,7 @@ class LauncherActivity : ComponentActivity() {
     private companion object {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
+        const val REQUEST_PICK_WALLPAPER = 2001
     }
 }
 

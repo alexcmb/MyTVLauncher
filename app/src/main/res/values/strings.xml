@@ -20,6 +20,10 @@
     <string name="background_ambient">Ambient banner</string>
     <string name="background_gradient">Accent gradient</string>
     <string name="background_solid">Solid</string>
+    <string name="background_image">Image…</string>
+    <string name="background_image_remove">Remove image</string>
+    <string name="background_brightness">Background brightness</string>
+    <string name="background_no_picker">No image picker available on this device</string>
     <string name="clock_seconds">Seconds</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Greeting</string>

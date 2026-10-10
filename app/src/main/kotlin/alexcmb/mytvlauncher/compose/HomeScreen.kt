@@ -65,6 +65,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -99,6 +100,16 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
+
+private fun lerpF(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/** Mixes [tint] into [base] by [fraction]; result is always fully opaque. */
+private fun blendColor(base: Color, tint: Color, fraction: Float): Color = Color(
+    red = base.red + (tint.red - base.red) * fraction,
+    green = base.green + (tint.green - base.green) * fraction,
+    blue = base.blue + (tint.blue - base.blue) * fraction,
+    alpha = 1f,
+)
 private val Muted = Color(0xFF9AA0B4)
 private val SourceSurface = Color(0xFF1C1C26)
 private val SourceSurfaceFocused = Color(0xFF2A2A38)
@@ -134,6 +145,8 @@ fun HomeScreen(
     widgets: List<WidgetTile>,
     clock: ClockOptions,
     background: BackgroundStyle,
+    backgroundImage: ImageBitmap?,
+    backgroundIntensity: Int,
     cardSize: CardSize,
     accentAuto: Boolean,
     showUsageCount: Boolean,
@@ -160,15 +173,39 @@ fun HomeScreen(
 
     CompositionLocalProvider(LocalAccent provides accent) {
     MaterialTheme {
-        val rootBackground = if (background == BackgroundStyle.ACCENT_GRADIENT) {
-            Modifier.background(
-                Brush.verticalGradient(listOf(LocalAccent.current.copy(alpha = 0.35f), Background))
-            )
+        // One intensity slider drives every mode: it deepens the SOLID tint, strengthens the
+        // gradient wash, and brightens the wallpaper (less dim). A dark base always carries the
+        // accent hue so even "solid" reads as coloured, not flat black.
+        val intensity = (backgroundIntensity / 100f).coerceIn(0f, 1f)
+        val accentColor = LocalAccent.current
+        val base = if (background == BackgroundStyle.SOLID) {
+            blendColor(Background, accentColor, lerpF(0.04f, 0.24f, intensity))
         } else {
-            Modifier.background(Background)
+            Background
         }
-        Box(Modifier.fillMaxSize().then(rootBackground)) {
-            if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
+        Box(Modifier.fillMaxSize().background(base)) {
+            // Background decoration, behind the content.
+            when (background) {
+                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused)
+                BackgroundStyle.ACCENT_GRADIENT -> Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(accentColor.copy(alpha = lerpF(0.18f, 0.65f, intensity)), Background)
+                        )
+                    )
+                )
+                BackgroundStyle.WALLPAPER -> if (backgroundImage != null) {
+                    Image(
+                        bitmap = backgroundImage,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // Brightness: more intensity → thinner scrim → brighter wallpaper.
+                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                }
+                BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
+            }
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
                 // The hero band reserves room for a focused app's name. On the hub its top rows

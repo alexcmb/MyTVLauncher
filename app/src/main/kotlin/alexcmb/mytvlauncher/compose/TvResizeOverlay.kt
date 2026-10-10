@@ -51,6 +51,9 @@ fun TvResizeOverlay(
     onAdjust: (Int) -> Unit,
     onCommit: () -> Unit,
     onCancel: () -> Unit,
+    min: Int = MIN_SCALE_PERCENT,
+    max: Int = MAX_SCALE_PERCENT,
+    step: Int = SCALE_STEP_PERCENT,
 ) {
     BackHandler(onBack = onCancel)
     val focus = remember { FocusRequester() }
@@ -64,10 +67,10 @@ fun TvResizeOverlay(
             .onPreviewKeyEvent { event ->
                 when {
                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft -> {
-                        onAdjust(-SCALE_STEP_PERCENT); true
+                        onAdjust(-step); true
                     }
                     event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight -> {
-                        onAdjust(SCALE_STEP_PERCENT); true
+                        onAdjust(step); true
                     }
                     event.type == KeyEventType.KeyUp &&
                         (event.key == Key.DirectionCenter || event.key == Key.Enter) -> {
@@ -96,8 +99,7 @@ fun TvResizeOverlay(
             }
             Spacer(Modifier.height(12.dp))
             // The slider: a track with the accent filling up to the current value.
-            val fraction =
-                (percent - MIN_SCALE_PERCENT).toFloat() / (MAX_SCALE_PERCENT - MIN_SCALE_PERCENT)
+            val fraction = ((percent - min).toFloat() / (max - min)).coerceIn(0f, 1f)
             Box(
                 Modifier
                     .width(320.dp)
