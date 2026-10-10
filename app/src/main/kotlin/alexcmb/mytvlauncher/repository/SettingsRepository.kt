@@ -35,6 +35,24 @@ enum class BackgroundStyle {
     WALLPAPER,
 }
 
+/** How a wallpaper image is scaled onto the screen. */
+enum class WallpaperFit {
+    /** Fill the screen keeping aspect ratio, cropping the overflow. */
+    FILL,
+
+    /** Stretch to fill exactly, ignoring aspect ratio. */
+    STRETCH,
+
+    /** Fit the whole image on screen, letterboxed. */
+    FIT,
+
+    /** Native size, centred (no scaling). */
+    CENTER,
+
+    /** Spread to the full width, keeping aspect ratio. */
+    SPAN,
+}
+
 /** User appearance preferences. */
 class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
@@ -45,6 +63,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_GREETING = "greeting"
         private const val KEY_BACKGROUND = "background"
         private const val KEY_BG_IMAGE = "background_image"
+        private const val KEY_BG_FIT = "background_fit"
         private const val KEY_BG_INTENSITY = "background_intensity"
         private const val KEY_CARD_SIZE = "card_size"
         /** How strongly the background colour/image shows through, as a percent. */
@@ -102,6 +121,14 @@ class SettingsRepository private constructor(context: Context) {
         sharedPreferences.edit().apply {
             if (uri == null) remove(KEY_BG_IMAGE) else putString(KEY_BG_IMAGE, uri)
         }.apply()
+
+    fun wallpaperFit(): WallpaperFit =
+        sharedPreferences.getString(KEY_BG_FIT, null)
+            ?.let { runCatching { WallpaperFit.valueOf(it) }.getOrNull() }
+            ?: WallpaperFit.FILL
+
+    fun setWallpaperFit(fit: WallpaperFit) =
+        sharedPreferences.edit().putString(KEY_BG_FIT, fit.name).apply()
 
     /** How strongly the background colour/image shows, 0–100. */
     fun backgroundIntensity(): Int =

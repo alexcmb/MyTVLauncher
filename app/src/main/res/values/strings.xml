@@ -24,6 +24,12 @@
     <string name="background_image_remove">Remove image</string>
     <string name="background_brightness">Background brightness</string>
     <string name="background_no_picker">No image picker available on this device</string>
+    <string name="wallpaper_fit">Image framing</string>
+    <string name="wallpaper_fit_fill">Fill</string>
+    <string name="wallpaper_fit_stretch">Stretch</string>
+    <string name="wallpaper_fit_fit">Fit</string>
+    <string name="wallpaper_fit_center">Center</string>
+    <string name="wallpaper_fit_span">Span</string>
     <string name="clock_seconds">Seconds</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Greeting</string>

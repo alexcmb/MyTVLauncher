@@ -22,6 +22,7 @@ import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
+import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.update.UpdateManager
 import alexcmb.mytvlauncher.widget.MAX_SCALE_PERCENT
 import alexcmb.mytvlauncher.widget.MIN_SCALE_PERCENT
@@ -112,6 +113,7 @@ class LauncherActivity : ComponentActivity() {
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
     private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
     private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
+    private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
     // Live value of the background-brightness slider while it's open, else null.
     private var backgroundAdjust by mutableStateOf<Int?>(null)
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
@@ -129,6 +131,7 @@ class LauncherActivity : ComponentActivity() {
         showGreeting = settings.showGreeting()
         background = settings.background()
         backgroundIntensity = settings.backgroundIntensity()
+        wallpaperFit = settings.wallpaperFit()
         loadBackgroundImage()
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
@@ -166,6 +169,7 @@ class LauncherActivity : ComponentActivity() {
                         background = background,
                         backgroundImage = backgroundImage,
                         backgroundIntensity = backgroundIntensity,
+                        wallpaperFit = wallpaperFit,
                         cardSize = cardSize,
                         accentAuto = accentAuto,
                         showUsageCount = showUsageCount,
@@ -497,6 +501,7 @@ class LauncherActivity : ComponentActivity() {
             },
         )
         if (settings.backgroundImageUri() != null) {
+            items += MenuItem(getString(R.string.wallpaper_fit)) { showWallpaperFitMenu() }
             items += MenuItem(getString(R.string.background_image_remove)) {
                 menu = null
                 settings.setBackgroundImageUri(null)
@@ -508,6 +513,24 @@ class LauncherActivity : ComponentActivity() {
             }
         }
         menu = MenuSpec(getString(R.string.action_background), items)
+    }
+
+    private fun showWallpaperFitMenu() {
+        fun choice(label: Int, fit: WallpaperFit) = MenuItem(getString(label)) {
+            menu = null
+            settings.setWallpaperFit(fit)
+            wallpaperFit = fit
+        }
+        menu = MenuSpec(
+            title = getString(R.string.wallpaper_fit),
+            items = listOf(
+                choice(R.string.wallpaper_fit_fill, WallpaperFit.FILL),
+                choice(R.string.wallpaper_fit_stretch, WallpaperFit.STRETCH),
+                choice(R.string.wallpaper_fit_fit, WallpaperFit.FIT),
+                choice(R.string.wallpaper_fit_center, WallpaperFit.CENTER),
+                choice(R.string.wallpaper_fit_span, WallpaperFit.SPAN),
+            ),
+        )
     }
 
     /** Opens the system document picker for an image to use as the wallpaper. */

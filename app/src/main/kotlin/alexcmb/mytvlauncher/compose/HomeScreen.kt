@@ -5,6 +5,7 @@ import alexcmb.mytvlauncher.media.NowPlaying
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
+import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.graphics.drawable.Drawable
@@ -147,6 +148,7 @@ fun HomeScreen(
     background: BackgroundStyle,
     backgroundImage: ImageBitmap?,
     backgroundIntensity: Int,
+    wallpaperFit: WallpaperFit,
     cardSize: CardSize,
     accentAuto: Boolean,
     showUsageCount: Boolean,
@@ -195,10 +197,17 @@ fun HomeScreen(
                     )
                 )
                 BackgroundStyle.WALLPAPER -> if (backgroundImage != null) {
+                    val scale = when (wallpaperFit) {
+                        WallpaperFit.FILL -> ContentScale.Crop
+                        WallpaperFit.STRETCH -> ContentScale.FillBounds
+                        WallpaperFit.FIT -> ContentScale.Fit
+                        WallpaperFit.CENTER -> ContentScale.None
+                        WallpaperFit.SPAN -> ContentScale.FillWidth
+                    }
                     Image(
                         bitmap = backgroundImage,
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                        contentScale = scale,
                         modifier = Modifier.fillMaxSize(),
                     )
                     // Brightness: more intensity → thinner scrim → brighter wallpaper.
