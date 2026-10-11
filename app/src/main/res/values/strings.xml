@@ -20,7 +20,7 @@
     <string name="background_ambient">Ambient banner</string>
     <string name="background_gradient">Accent gradient</string>
     <string name="background_solid">Solid</string>
-    <string name="background_image">Image…</string>
+    <string name="background_image">Choose an image…</string>
     <string name="background_image_remove">Remove image</string>
     <string name="background_brightness">Background brightness</string>
     <string name="background_no_picker">No image picker available on this device</string>
@@ -85,7 +85,6 @@
     <string name="menu_uninstall">Uninstall</string>
     <string name="menu_app_info">App info</string>
     <string name="action_open_failed">Can\'t open</string>
-    <string name="action_hidden_apps">Hidden apps (%1$d)</string>
     <string name="action_hidden_apps_title">Show a hidden app</string>
     <string name="no_hidden_apps">No hidden apps</string>
     <string name="update_checking">Checking for updates…</string>
@@ -96,4 +95,10 @@
     <string name="update_install">Install</string>
     <string name="update_downloading">Downloading update…</string>
     <string name="update_download_failed">Download failed</string>
+    <string name="accent_auto_short">Auto</string>
+    <string name="background_style">Style</string>
+    <string name="background_wallpaper">Image</string>
+    <string name="background_image_set">Set</string>
+    <string name="background_image_none">None</string>
+    <string name="action_hidden_apps_label">Hidden apps</string>
 </resources>
