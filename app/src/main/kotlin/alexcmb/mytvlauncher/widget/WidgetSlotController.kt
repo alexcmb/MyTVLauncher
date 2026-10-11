@@ -5,6 +5,7 @@ import alexcmb.mytvlauncher.repository.WidgetRepository
 import android.app.Activity
 import android.app.AlertDialog
 import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
@@ -94,15 +95,15 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     /**
-     * Builds one host view for a widget at the shared base size; Compose scales and places
-     * it. Every widget lays out at the same size so its RemoteViews are comfortable, then the
-     * hub scales the rendered view — most widgets won't shrink their own layout, they'd clip.
+     * Builds one host view for a widget at its layout size — the real size in NATIVE fit (so a
+     * responsive widget picks the matching variant) or the shape's base size in FIT (the hub
+     * then scales that down). The provider is told this size so it lays out to match.
      */
     fun createHostView(hosted: HostedWidget): View {
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return View(activity)
         val view = host.createView(activity, hosted.id, info)
-        val w = WidgetSize.BASE_WIDTH_DP
-        val h = WidgetSize.BASE_HEIGHT_DP
+        val w = hosted.layoutWidthDp()
+        val h = hosted.layoutHeightDp()
         view.updateAppWidgetSize(null, w, h, w, h)
         return view
     }
@@ -152,13 +153,36 @@ class WidgetSlotController(private val activity: Activity) {
         refresh()
     }
 
-    fun resize(id: Int, size: WidgetSize) {
-        repository.updateSize(id, size)
+    fun rescale(id: Int, scalePercent: Int) {
+        repository.updateScale(id, scalePercent.coerceIn(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT))
         refresh()
+    }
+
+    /** The stored scale of one hosted widget, for seeding the live-resize slider. */
+    fun scaleOf(id: Int): Int =
+        repository.query().firstOrNull { it.id == id }?.scalePercent ?: 100
+
+    /**
+     * Tells a host view the size it is now displayed at, so the provider can swap in the
+     * layout variant that matches. Used during live resize, where the view is kept and
+     * resized in place rather than rebuilt on every step.
+     */
+    fun tellSize(view: View, widthDp: Int, heightDp: Int) {
+        (view as? AppWidgetHostView)?.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
     }
 
     fun align(id: Int, alignment: WidgetAlignment) {
         repository.updateAlignment(id, alignment)
+        refresh()
+    }
+
+    fun reshape(id: Int, shape: WidgetShape) {
+        repository.updateShape(id, shape)
+        refresh()
+    }
+
+    fun refit(id: Int, fit: WidgetFit) {
+        repository.updateFit(id, fit)
         refresh()
     }
 
@@ -211,10 +235,13 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     private fun keep(id: Int) {
-        repository.add(HostedWidget(id, WidgetSize.MEDIUM))
+        // Drop the new widget into the first free zone, so successive adds fill left, then
+        // centre, then right, instead of piling up on the left.
+        val alignment = nextFreeAlignment(repository.query().map { it.alignment })
+        repository.add(HostedWidget(id, alignment = alignment))
         pendingId = NO_WIDGET
         refresh()
-        Log.i(TAG, "Hosting widget $id")
+        Log.i(TAG, "Hosting widget $id in $alignment")
     }
 
     private fun bindConsentIntent(id: Int, provider: AppWidgetProviderInfo) =

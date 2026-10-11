@@ -1,15 +1,18 @@
 package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
+import alexcmb.mytvlauncher.media.NowPlaying
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
+import alexcmb.mytvlauncher.repository.WallpaperFit
+import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
-import alexcmb.mytvlauncher.widget.WidgetSize
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -19,7 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,6 +35,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -49,6 +53,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -60,13 +66,19 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -89,15 +101,36 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
+
+private fun lerpF(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+/** Mixes [tint] into [base] by [fraction]; result is always fully opaque. */
+private fun blendColor(base: Color, tint: Color, fraction: Float): Color = Color(
+    red = base.red + (tint.red - base.red) * fraction,
+    green = base.green + (tint.green - base.green) * fraction,
+    blue = base.blue + (tint.blue - base.blue) * fraction,
+    alpha = 1f,
+)
 private val Muted = Color(0xFF9AA0B4)
+private val SourceSurface = Color(0xFF1C1C26)
+private val SourceSurfaceFocused = Color(0xFF2A2A38)
 private const val FAVOURITES = 8
 
-/** A widget to place on the hub: its scale, where it sits, and a factory for its host view. */
+/**
+ * A widget to place on the hub: its tile footprint, the size its host view is laid out at
+ * (equal in NATIVE fit, larger in FIT so it can be scaled down), where it sits, a factory,
+ * and a hook that tells the (kept-alive) view its current size — that's what lets a live
+ * resize swap the widget's layout variants without rebuilding the view each step.
+ */
 data class WidgetTile(
     val id: Int,
-    val scale: Float,
+    val widthDp: Int,
+    val heightDp: Int,
+    val layoutWidthDp: Int,
+    val layoutHeightDp: Int,
     val alignment: WidgetAlignment,
     val createView: () -> View,
+    val applySize: (View) -> Unit,
 )
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
@@ -113,10 +146,19 @@ fun HomeScreen(
     widgets: List<WidgetTile>,
     clock: ClockOptions,
     background: BackgroundStyle,
+    backgroundImage: ImageBitmap?,
+    backgroundIntensity: Int,
+    wallpaperFit: WallpaperFit,
     cardSize: CardSize,
     accentAuto: Boolean,
+    showUsageCount: Boolean,
+    showAppLabels: Boolean,
+    nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onOpenSource: (TvSource) -> Unit,
+    onPlayPause: () -> Unit,
+    onOpenNowPlaying: () -> Unit,
     onSettings: () -> Unit,
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -133,32 +175,76 @@ fun HomeScreen(
 
     CompositionLocalProvider(LocalAccent provides accent) {
     MaterialTheme {
-        val rootBackground = if (background == BackgroundStyle.ACCENT_GRADIENT) {
-            Modifier.background(
-                Brush.verticalGradient(listOf(LocalAccent.current.copy(alpha = 0.35f), Background))
-            )
+        // One intensity slider drives every mode: it deepens the SOLID tint, strengthens the
+        // gradient wash, and brightens the wallpaper (less dim). A dark base always carries the
+        // accent hue so even "solid" reads as coloured, not flat black.
+        val intensity = (backgroundIntensity / 100f).coerceIn(0f, 1f)
+        val accentColor = LocalAccent.current
+        val base = if (background == BackgroundStyle.SOLID) {
+            blendColor(Background, accentColor, lerpF(0.04f, 0.24f, intensity))
         } else {
-            Modifier.background(Background)
+            Background
         }
-        Box(Modifier.fillMaxSize().then(rootBackground)) {
-            if (background == BackgroundStyle.AMBIENT) AmbientBackdrop(focused)
+        Box(Modifier.fillMaxSize().background(base)) {
+            // Background decoration, behind the content.
+            when (background) {
+                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused)
+                BackgroundStyle.ACCENT_GRADIENT -> Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(accentColor.copy(alpha = lerpF(0.18f, 0.65f, intensity)), Background)
+                        )
+                    )
+                )
+                BackgroundStyle.WALLPAPER -> if (backgroundImage != null) {
+                    val scale = when (wallpaperFit) {
+                        WallpaperFit.FILL -> ContentScale.Crop
+                        WallpaperFit.STRETCH -> ContentScale.FillBounds
+                        WallpaperFit.FIT -> ContentScale.Fit
+                        WallpaperFit.CENTER -> ContentScale.None
+                        WallpaperFit.SPAN -> ContentScale.FillWidth
+                    }
+                    Image(
+                        bitmap = backgroundImage,
+                        contentDescription = null,
+                        contentScale = scale,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // Brightness: more intensity → thinner scrim → brighter wallpaper.
+                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                }
+                BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
+            }
             Column(Modifier.fillMaxSize()) {
                 TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
-                Hero(focused, tab?.shortcuts.orEmpty())
+                // The hero band reserves room for a focused app's name. On the hub its top rows
+                // (now-playing, widgets) focus no app, so collapse it there to hand that space to
+                // the content — otherwise a now-playing card plus this empty band push the
+                // favourites row off the bottom. Other tabs keep it fixed to avoid a jump.
+                val heroHeight by animateDpAsState(
+                    targetValue = if (selectedTab == 0 && focused == null) 0.dp else 64.dp,
+                    label = "hero",
+                )
+                Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount, heroHeight)
                 when {
                     tab == null -> Unit
                     // The first tab is a hub: widgets and a few favourites, nothing endless.
-                    selectedTab == 0 -> Hub(
+                    selectedTab == 0 && tab is AppsTab -> Hub(
                         widgets = widgets,
                         favourites = tab.shortcuts.take(FAVOURITES),
                         cardSize = cardSize,
                         tabsFocus = tabsFocus,
+                        showAppLabels = showAppLabels,
+                        nowPlaying = nowPlaying,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
+                        onPlayPause = onPlayPause,
+                        onOpenNowPlaying = onOpenNowPlaying,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
                     )
-                    else -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, onLaunch, onLongPress) { focused = it }
+                    tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
+                    tab is AppsTab -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress) { focused = it }
                 }
             }
         }
@@ -262,22 +348,24 @@ private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
 
 /** Surfaces the open count — data the launcher has always collected and never shown. */
 @Composable
-private fun Hero(focused: Shortcut?, inTab: List<Shortcut>) {
-    Column(Modifier.fillMaxWidth().height(64.dp).padding(start = 48.dp)) {
+private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean, height: Dp) {
+    Column(Modifier.fillMaxWidth().height(height).padding(start = 48.dp)) {
         if (focused != null) {
             Text(focused.title, color = Color.White, fontSize = 22.sp)
-            val rank = inTab.indexOf(focused) + 1
-            val opens = focused.openCount
-            Text(
-                text = when {
-                    opens == 0 -> stringResource(R.string.home_never_opened)
-                    rank == 1 -> stringResource(R.string.home_opens_top, opens)
-                    else -> stringResource(R.string.home_opens_ranked, opens, rank)
-                },
-                color = Muted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            if (showUsageCount) {
+                val rank = inTab.indexOf(focused) + 1
+                val opens = focused.openCount
+                Text(
+                    text = when {
+                        opens == 0 -> stringResource(R.string.home_never_opened)
+                        rank == 1 -> stringResource(R.string.home_opens_top, opens)
+                        else -> stringResource(R.string.home_opens_ranked, opens, rank)
+                    },
+                    color = Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
     }
 }
@@ -288,8 +376,12 @@ private fun Hub(
     favourites: List<Shortcut>,
     cardSize: CardSize,
     tabsFocus: FocusRequester,
+    showAppLabels: Boolean,
+    nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onPlayPause: () -> Unit,
+    onOpenNowPlaying: () -> Unit,
     onFocus: (Shortcut) -> Unit,
     onWidgetsFocused: () -> Unit,
 ) {
@@ -299,6 +391,9 @@ private fun Hub(
     var appsFocused by remember { mutableStateOf(false) }
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
+    // The now-playing card sits above the widgets; track its focus so DPAD-up chains correctly.
+    var nowPlayingFocused by remember { mutableStateOf(false) }
+    val nowPlayingFocus = remember { FocusRequester() }
     val collapse by animateFloatAsState(
         targetValue = if (appsFocused && widgets.isNotEmpty()) 1f else 0f,
         animationSpec = tween(durationMillis = 260),
@@ -312,11 +407,13 @@ private fun Hub(
     val density = LocalDensity.current
     val bandRisePx = remember(widgets) {
         if (widgets.isEmpty()) 0f
-        else with(density) {
-            (WidgetSize.BASE_HEIGHT_DP * widgets.maxOf { it.scale } + 24).dp.toPx()
-        }
+        else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
     }
-    val cardWidth = lerp(cardSize.favouriteWidthDp.dp, (cardSize.favouriteWidthDp + 60).dp, collapse)
+    // Slimmer favourites at rest so the shorter (16:9) row keeps clear of the screen's bottom
+    // edge, which TV overscan can eat into. They grow back to full size as the band collapses
+    // and the row rises into the freed space, where there's plenty of room.
+    val restFavouriteWidth = (cardSize.favouriteWidthDp - 40).dp
+    val cardWidth = lerp(restFavouriteWidth, (cardSize.favouriteWidthDp + 60).dp, collapse)
 
     Column(
         Modifier
@@ -324,20 +421,51 @@ private fun Hub(
             // its clip bounds out at the screen edge so a focused card can scale up without
             // being clipped. The 48dp margin is applied per child instead.
             .focusGroup()
-            // DPAD-up from the top of the hub goes to the tabs, not the (spatially closer)
-            // settings orb. Only redirect from the top row: a focused widget, or the
-            // favourites when there are no widgets above them. A previewed key so it wins
-            // even over an embedded widget view that might otherwise swallow the press.
+            // DPAD-up walks one level up the hub: favourites → widgets → now-playing → tabs.
+            // The now-playing card and the tabs are reached by an explicit request (the tabs
+            // are centred, so plain spatial search would drift to the settings orb). A previewed
+            // key so it wins even over an embedded widget view that might swallow the press.
             .onPreviewKeyEvent { event ->
-                val atTop = focusedWidget != null || widgets.isEmpty()
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp && atTop) {
-                    tabsFocus.requestFocus()
+                if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
+                    return@onPreviewKeyEvent false
+                }
+                val target = when {
+                    nowPlayingFocused -> tabsFocus
+                    focusedWidget != null -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
+                    widgets.isEmpty() -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
+                    else -> null // favourites with widgets above: let spatial nav reach them
+                }
+                if (target != null) {
+                    target.requestFocus()
                     true
                 } else {
                     false
                 }
             },
     ) {
+        if (nowPlaying != null) {
+            NowPlayingCard(
+                nowPlaying = nowPlaying,
+                focusRequester = nowPlayingFocus,
+                onPlayPause = onPlayPause,
+                onOpen = onOpenNowPlaying,
+                onFocusChanged = { focused ->
+                    nowPlayingFocused = focused
+                    if (focused) {
+                        appsFocused = false
+                        // Not an app: drop the app backdrop/hero back to their idle state.
+                        onWidgetsFocused()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 12.dp)
+                    .graphicsLayer {
+                        alpha = 1f - collapse
+                        translationY = -collapse * bandRisePx
+                    },
+            )
+        }
         if (widgets.isNotEmpty()) {
             val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
             val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
@@ -358,16 +486,15 @@ private fun Hub(
                         alpha = 1f - collapse
                         translationY = -collapse * bandRisePx
                     }
-                    .padding(start = 48.dp, end = 48.dp, bottom = 24.dp),
+                    .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
             ) {
-                // Three equal thirds; each zone is centred in its own third, so a CENTER
-                // widget sits at screen centre and START/END sit centred on their sides. A
-                // zone with an occupied neighbour is shrunk to fit its third so the two never
-                // overlap; a lone zone keeps full size (it just spills into the empty thirds).
+                // Three equal thirds; each zone is centred in its own, so a CENTER widget sits
+                // at screen centre and START/END sit centred on their sides. Widgets render at
+                // their real chosen size — pick a size that fits if the band gets crowded.
                 val onFocused = { id: Int -> focusedWidget = id }
-                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
-                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, capped = startTiles.isNotEmpty() || endTiles.isNotEmpty(), Modifier.weight(1f))
-                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, capped = centerTiles.isNotEmpty(), Modifier.weight(1f))
+                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
+                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
+                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
             }
         }
         if (favourites.isNotEmpty()) {
@@ -387,13 +514,15 @@ private fun Hub(
                     modifier = Modifier.padding(start = 48.dp, bottom = 8.dp),
                 )
                 // contentPadding, not an outer margin, so the row clips at the screen edge and
-                // the end cards can scale up on focus without their border being truncated.
+                // the end cards can scale up on focus without their border being truncated. The
+                // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
+                // or the row clips the top/bottom edges and the card loses its rounded corners.
                 LazyRow(
-                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 6.dp, bottom = 6.dp),
+                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(favourites, key = { it.id }) { shortcut ->
-                        AppCard(shortcut, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
+                        AppCard(shortcut, showAppLabels, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
                     }
                 }
             }
@@ -402,9 +531,10 @@ private fun Hub(
 }
 
 /**
- * One third of the band, holding a placement zone centred within it. When [capped] (a
- * neighbouring third is occupied) the zone is shrunk to fit its third so the two never
- * overlap; otherwise it keeps full size and simply spills into the empty thirds beside it.
+ * One third of the band. Its zone is measured unbounded so a tile keeps its true size — a
+ * plain size() would be clamped by the third's width, which silently cropped every widget
+ * wider than it. A zone that fits is centred in its third; one that overflows is anchored to
+ * its side (START left, END right) so it grows over free space, never past the screen edge.
  */
 @Composable
 private fun WidgetSlot(
@@ -412,19 +542,26 @@ private fun WidgetSlot(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
-    capped: Boolean,
     modifier: Modifier,
 ) {
-    Box(modifier) {
-        if (tiles.isNotEmpty()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val slotDp = maxWidth.value
-                val spacing = 16f * (tiles.size - 1)
-                val intrinsic =
-                    tiles.sumOf { (WidgetSize.BASE_WIDTH_DP * it.scale).toDouble() }.toFloat() + spacing
-                val fit = if (capped && intrinsic > slotDp) slotDp / intrinsic else 1f
-                WidgetZone(tiles, spotlight, focusedWidget, onFocused, fit, Modifier.align(Alignment.TopCenter))
+    val alignment = tiles.firstOrNull()?.alignment
+    Box(
+        modifier.layout { measurable, constraints ->
+            val placeable = measurable.measure(
+                constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity)
+            )
+            val width = constraints.maxWidth
+            val x = when {
+                placeable.width <= width -> (width - placeable.width) / 2
+                alignment == WidgetAlignment.START -> 0
+                alignment == WidgetAlignment.END -> width - placeable.width
+                else -> (width - placeable.width) / 2
             }
+            layout(width, placeable.height) { placeable.placeRelative(x, 0) }
+        }
+    ) {
+        if (tiles.isNotEmpty()) {
+            WidgetZone(tiles, spotlight, focusedWidget, onFocused)
         }
     }
 }
@@ -436,35 +573,38 @@ private fun WidgetZone(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
-    extraScale: Float,
     modifier: Modifier = Modifier,
 ) {
-    val baseW = WidgetSize.BASE_WIDTH_DP.dp
-    val baseH = WidgetSize.BASE_HEIGHT_DP.dp
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         tiles.forEach { tile ->
+            // Keyed by id only: the host view survives size and shape changes and is resized
+            // in place (applySize tells it each new size), which keeps a live slider resize
+            // smooth and lets the widget swap its layout variants as it grows.
             key(tile.id) {
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
-                // The tile occupies the scaled footprint; the host view is always built at
-                // the base size (so its RemoteViews lay out well) and scaled to fit — most
-                // widgets clip rather than shrink if handed a small size directly. extraScale
-                // shrinks the zone further when it must share the band with a neighbour.
-                val scale = tile.scale * extraScale
                 Box(
                     modifier = Modifier
-                        .size(baseW * scale, baseH * scale)
+                        .size(tile.widthDp.dp, tile.heightDp.dp)
                         .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
                         .graphicsLayer { alpha = tileAlpha }
+                        // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
                     contentAlignment = Alignment.Center,
                 ) {
+                    // The host view is laid out at its layout size and scaled to the tile: in
+                    // NATIVE fit those are equal (scale 1, the widget owns the size and may
+                    // clip); in FIT the layout is the larger base size scaled down so it shows
+                    // whole.
+                    val sx = tile.widthDp.toFloat() / tile.layoutWidthDp
+                    val sy = tile.heightDp.toFloat() / tile.layoutHeightDp
                     AndroidView(
                         factory = { tile.createView() },
+                        update = { tile.applySize(it) },
                         modifier = Modifier
-                            .requiredSize(baseW, baseH)
-                            .graphicsLayer { scaleX = scale; scaleY = scale },
+                            .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
+                            .graphicsLayer { scaleX = sx; scaleY = sy },
                     )
                 }
             }
@@ -477,6 +617,7 @@ private fun AppsGrid(
     shortcuts: List<Shortcut>,
     cardSize: CardSize,
     tabsFocus: FocusRequester,
+    showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -504,7 +645,194 @@ private fun AppsGrid(
             },
     ) {
         itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
-            AppCard(shortcut, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
+            AppCard(shortcut, showAppLabels, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
+        }
+    }
+}
+
+/** The TV's external inputs (HDMI, AV, …); tapping one switches the TV to it. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SourcesGrid(
+    sources: List<TvSource>,
+    cardSize: CardSize,
+    tabsFocus: FocusRequester,
+    onOpen: (TvSource) -> Unit,
+) {
+    var focusedIndex by remember { mutableStateOf(-1) }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(cardSize.columns),
+        contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .focusGroup()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
+                    focusedIndex in 0 until cardSize.columns
+                ) {
+                    tabsFocus.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
+        itemsIndexed(sources, key = { _, source -> source.id }) { index, source ->
+            SourceCard(source, onOpen) { focusedIndex = index }
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: () -> Unit) {
+    Card(
+        onClick = { onOpen(source) },
+        scale = CardDefaults.scale(focusedScale = 1.08f),
+        colors = CardDefaults.colors(
+            containerColor = SourceSurface,
+            focusedContainerColor = SourceSurfaceFocused,
+        ),
+        border = CardDefaults.border(
+            focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
+        ),
+        modifier = Modifier
+            .aspectRatio(16f / 9f)
+            .onFocusChanged { if (it.isFocused) onFocus() },
+    ) {
+        val iconTint = when {
+            source.isConnected -> Color.White
+            source.isAvailable -> Color.White.copy(alpha = 0.85f)
+            else -> Muted
+        }
+        Box(
+            Modifier.fillMaxSize().alpha(if (source.isAvailable) 1f else 0.55f),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(
+                    if (source.isHdmi) R.drawable.ic_source_hdmi else R.drawable.ic_source_av
+                ),
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(40.dp),
+            )
+            if (source.isConnected) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(8.dp)
+                        .background(LocalAccent.current, CircleShape),
+                )
+            }
+            Text(
+                text = source.label,
+                color = Color.White,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The TV's active media session on the hub: album art, title, artist, and its play state.
+ * OK toggles play/pause; a long press opens the app that owns the session.
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun NowPlayingCard(
+    nowPlaying: NowPlaying,
+    focusRequester: FocusRequester,
+    onPlayPause: () -> Unit,
+    onOpen: () -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        onClick = onPlayPause,
+        onLongClick = onOpen,
+        scale = CardDefaults.scale(focusedScale = 1.04f),
+        colors = CardDefaults.colors(
+            containerColor = SourceSurface,
+            focusedContainerColor = SourceSurfaceFocused,
+        ),
+        border = CardDefaults.border(
+            focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
+        ),
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .onFocusChanged { onFocusChanged(it.isFocused) },
+    ) {
+        Row(
+            modifier = Modifier
+                .height(52.dp)
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Background),
+                contentAlignment = Alignment.Center,
+            ) {
+                val art = nowPlaying.art
+                if (art != null) {
+                    Image(
+                        bitmap = art.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_music_note),
+                        contentDescription = null,
+                        tint = Muted,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            // Wraps its text so the card is only as wide as it needs, capped so a very long
+            // title ellipsizes instead of stretching the card across the screen.
+            Column(modifier = Modifier.widthIn(max = 360.dp)) {
+                Text(
+                    text = stringResource(R.string.now_playing).uppercase(),
+                    color = LocalAccent.current,
+                    fontSize = 9.sp,
+                )
+                Text(
+                    text = nowPlaying.title,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                nowPlaying.subtitle?.let {
+                    Text(
+                        text = it,
+                        color = Muted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(
+                painter = painterResource(
+                    if (nowPlaying.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                ),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
 }
@@ -533,6 +861,7 @@ private fun AmbientBackdrop(focused: Shortcut?) {
 @Composable
 private fun AppCard(
     shortcut: Shortcut,
+    showLabel: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
@@ -553,17 +882,37 @@ private fun AppCard(
             val banner = shortcut.banner
             if (banner != null) {
                 DrawableImage(banner, Modifier.fillMaxSize(), ContentScale.Crop)
+                // Optional name over the banner, with a scrim across the bottom for legibility.
+                if (showLabel) {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.55f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = 0.7f),
+                            )
+                        )
+                    )
+                    CardLabel(shortcut.title)
+                }
             } else {
+                // No banner: the icon needs its name regardless of the setting.
                 shortcut.icon?.let { DrawableImage(it, Modifier.size(64.dp), ContentScale.Fit) }
-                Text(
-                    text = shortcut.title,
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-                )
+                CardLabel(shortcut.title)
             }
         }
     }
+}
+
+@Composable
+private fun BoxScope.CardLabel(title: String) {
+    Text(
+        text = title,
+        color = Color.White,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
+    )
 }
 
 /** The live clock, re-aligned on the whole second so it doesn't drift. */

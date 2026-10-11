@@ -1,0 +1,4 @@
+<resources>
+    <!-- The debug build installs beside the real launcher; make it tell itself apart. -->
+    <string name="app_name">My TV Launcher (dev)</string>
+</resources>

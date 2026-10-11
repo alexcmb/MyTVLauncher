@@ -7,22 +7,39 @@ import alexcmb.mytvlauncher.compose.HomeTabs
 import alexcmb.mytvlauncher.compose.MenuItem
 import alexcmb.mytvlauncher.compose.MenuSpec
 import alexcmb.mytvlauncher.compose.TvMenu
+import alexcmb.mytvlauncher.compose.TvResizeOverlay
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
 import alexcmb.mytvlauncher.compose.LocalAccent
+import alexcmb.mytvlauncher.media.NowPlaying
+import alexcmb.mytvlauncher.media.NowPlayingController
+import alexcmb.mytvlauncher.media.NowPlayingListenerService
 import alexcmb.mytvlauncher.model.Shortcut
+import alexcmb.mytvlauncher.source.TvSource
+import alexcmb.mytvlauncher.source.TvSourceController
 import alexcmb.mytvlauncher.repository.AccentColor
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
+import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.widget.MAX_SCALE_PERCENT
+import alexcmb.mytvlauncher.widget.MIN_SCALE_PERCENT
 import alexcmb.mytvlauncher.widget.WidgetAlignment
-import alexcmb.mytvlauncher.widget.WidgetSize
+import alexcmb.mytvlauncher.widget.WidgetFit
+import alexcmb.mytvlauncher.widget.WidgetShape
 import alexcmb.mytvlauncher.widget.WidgetSlotController
+import alexcmb.mytvlauncher.widget.layoutHeightDp
+import alexcmb.mytvlauncher.widget.layoutWidthDp
+import alexcmb.mytvlauncher.widget.tileHeightDp
+import alexcmb.mytvlauncher.widget.tileWidthDp
+import android.app.AlertDialog
 import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -38,13 +55,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The launcher home, in Compose for TV. Overlay state (the menus, the rename prompt) lives
@@ -56,18 +78,47 @@ class LauncherActivity : ComponentActivity() {
     private lateinit var viewModel: BrowseViewModel
     private val updateManager by lazy { UpdateManager(applicationContext) }
     private val widgetSlot by lazy { WidgetSlotController(this) }
+    private val sourceController by lazy { TvSourceController(this) }
+    private val nowPlayingController by lazy { NowPlayingController(this) }
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
-    private var menu by mutableStateOf<MenuSpec?>(null)
+    // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
+    // closing the lot. Assigning `menu` drives it: null clears everything (a leaf action ran);
+    // a spec whose title matches the top refreshes that level (e.g. a toggle flipping); any
+    // other title pushes a new level.
+    private val menuStack = mutableStateListOf<MenuSpec>()
+    private var menu: MenuSpec?
+        get() = menuStack.lastOrNull()
+        set(value) {
+            when {
+                value == null -> menuStack.clear()
+                menuStack.lastOrNull()?.title == value.title ->
+                    menuStack[menuStack.lastIndex] = value
+                else -> menuStack.add(value)
+            }
+        }
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
+
+    /** A live widget resize in progress: its target, slider value, and panel label. */
+    private data class ResizeSession(val id: Int, val percent: Int, val label: String)
+    private var resizing by mutableStateOf<ResizeSession?>(null)
+    private var sources by mutableStateOf<List<TvSource>>(emptyList())
+    private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
     private var clockShowSeconds by mutableStateOf(true)
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
+    private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
+    private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
+    private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
+    // Live value of the background-brightness slider while it's open, else null.
+    private var backgroundAdjust by mutableStateOf<Int?>(null)
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
+    private var showUsageCount by mutableStateOf(true)
+    private var showAppLabels by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,8 +130,16 @@ class LauncherActivity : ComponentActivity() {
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
         background = settings.background()
+        backgroundIntensity = settings.backgroundIntensity()
+        wallpaperFit = settings.wallpaperFit()
+        loadBackgroundImage()
         cardSize = settings.cardSize()
+        showUsageCount = settings.showUsageCount()
+        showAppLabels = settings.showAppLabels()
         widgetSlot.onChanged = { refreshWidgets() }
+        sourceController.onChanged = { sources = sourceController.sources() }
+        sources = sourceController.sources()
+        nowPlayingController.onChanged = { nowPlaying = nowPlayingController.nowPlaying() }
         if (savedInstanceState == null) {
             // Cold start only: clean widget ids left over from cancelled/interrupted adds.
             // Never mid-session — an add's configure screen can stop/recreate us, and pruning
@@ -98,7 +157,9 @@ class LauncherActivity : ComponentActivity() {
         })
         setContent {
             val groups by viewModel.browseContent.observeAsState(emptyList())
-            val tabs = HomeTabs.from(groups, stringResource(R.string.title_home))
+            val tabs = HomeTabs.from(
+                groups, stringResource(R.string.title_home), sources, stringResource(R.string.title_sources),
+            )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
                 Box {
                     HomeScreen(
@@ -106,13 +167,68 @@ class LauncherActivity : ComponentActivity() {
                         widgets = widgets,
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
+                        backgroundImage = backgroundImage,
+                        backgroundIntensity = backgroundIntensity,
+                        wallpaperFit = wallpaperFit,
                         cardSize = cardSize,
                         accentAuto = accentAuto,
+                        showUsageCount = showUsageCount,
+                        showAppLabels = showAppLabels,
+                        nowPlaying = nowPlaying,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
+                        onOpenSource = sourceController::open,
+                        onPlayPause = nowPlayingController::playPause,
+                        onOpenNowPlaying = nowPlayingController::openApp,
                         onSettings = ::showSettingsMenu,
                     )
-                    menu?.let { TvMenu(it) { menu = null } }
+                    // Back pops one level; when the stack empties the menu is gone.
+                    menu?.let { spec -> TvMenu(spec) { menuStack.removeAt(menuStack.lastIndex) } }
+                    resizing?.let { session ->
+                        TvResizeOverlay(
+                            label = session.label,
+                            percent = session.percent,
+                            onAdjust = { delta ->
+                                val next = (session.percent + delta)
+                                    .coerceIn(MIN_SCALE_PERCENT, MAX_SCALE_PERCENT)
+                                resizing = session.copy(percent = next)
+                                refreshWidgets()
+                            },
+                            onCommit = {
+                                widgetSlot.rescale(session.id, session.percent)
+                                resizing = null
+                            },
+                            onCancel = {
+                                resizing = null
+                                refreshWidgets()
+                            },
+                        )
+                    }
+                    backgroundAdjust?.let { value ->
+                        TvResizeOverlay(
+                            label = stringResource(R.string.background_brightness),
+                            percent = value,
+                            min = SettingsRepository.BG_INTENSITY_MIN,
+                            max = SettingsRepository.BG_INTENSITY_MAX,
+                            step = SettingsRepository.BG_INTENSITY_STEP,
+                            onAdjust = { delta ->
+                                val next = (value + delta).coerceIn(
+                                    SettingsRepository.BG_INTENSITY_MIN,
+                                    SettingsRepository.BG_INTENSITY_MAX,
+                                )
+                                backgroundAdjust = next
+                                backgroundIntensity = next // live preview behind the slider
+                            },
+                            onCommit = {
+                                settings.setBackgroundIntensity(value)
+                                backgroundAdjust = null
+                            },
+                            onCancel = {
+                                backgroundAdjust = null
+                                backgroundIntensity = settings.backgroundIntensity()
+                            },
+                        )
+                    }
                     namingCategoryFor?.let { shortcut ->
                         TvTextPrompt(
                             title = stringResource(R.string.category_new_title),
@@ -129,6 +245,10 @@ class LauncherActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         widgetSlot.startListening()
+        sourceController.startListening()
+        nowPlayingController.startListening()
+        sources = sourceController.sources()
+        nowPlaying = nowPlayingController.nowPlaying()
         refreshWidgets()
     }
 
@@ -140,6 +260,8 @@ class LauncherActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         widgetSlot.stopListening()
+        sourceController.stopListening()
+        nowPlayingController.stopListening()
     }
 
     @Deprecated("The widget bind and configure flows are driven by the legacy result API")
@@ -153,25 +275,61 @@ class LauncherActivity : ComponentActivity() {
             WidgetSlotController.REQUEST_PICK -> widgetSlot.onPickResult(
                 granted, data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
             )
+            REQUEST_PICK_WALLPAPER -> if (granted) onWallpaperPicked(data)
         }
     }
 
-    // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return
-    // to Home was what made the tab change hitch. Keyed by id — the host view is always built
-    // at the base size now (Compose scales it), so a resize no longer needs a fresh view.
+    private fun onWallpaperPicked(data: Intent?) {
+        val uri = data?.data ?: return
+        // Persist read access so the wallpaper survives reboots.
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        settings.setBackgroundImageUri(uri.toString())
+        settings.setBackground(BackgroundStyle.WALLPAPER)
+        background = BackgroundStyle.WALLPAPER
+        loadBackgroundImage()
+    }
+
+    // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
+    // Home was what made the tab change hitch. Keyed by id only — a size or shape change keeps
+    // the view and resizes it in place (applySize), which is what makes live resizing smooth.
     private val hostViews = HashMap<Int, View>()
 
     private fun refreshWidgets() {
         val hosted = widgetSlot.hostedForDisplay()
         hostViews.keys.retainAll(hosted.map { it.id }.toSet())
-        widgets = hosted.map { h ->
-            WidgetTile(h.id, h.size.scale, h.alignment) {
-                val view = hostViews[h.id] ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
-                // It may still be attached to the AndroidView from the previous visit.
-                (view.parent as? ViewGroup)?.removeView(view)
-                view
-            }
+        widgets = hosted.map { stored ->
+            // While this widget's slider is up, render at the slider value, not the stored one.
+            val h = resizing?.takeIf { it.id == stored.id }
+                ?.let { stored.copy(scalePercent = it.percent) } ?: stored
+            val layoutW = h.layoutWidthDp()
+            val layoutH = h.layoutHeightDp()
+            WidgetTile(
+                id = h.id,
+                widthDp = h.tileWidthDp(),
+                heightDp = h.tileHeightDp(),
+                layoutWidthDp = layoutW,
+                layoutHeightDp = layoutH,
+                alignment = h.alignment,
+                createView = {
+                    val view = hostViews[h.id]
+                        ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
+                    // It may still be attached to the AndroidView from the previous visit.
+                    (view.parent as? ViewGroup)?.removeView(view)
+                    view
+                },
+                applySize = { view -> widgetSlot.tellSize(view, layoutW, layoutH) },
+            )
         }
+    }
+
+    /** Opens the live resize slider for one widget; the menus close so the render is visible. */
+    private fun startResize(id: Int) {
+        val label = widgetSlot.hostedWidgets().firstOrNull { it.first == id }?.second?.toString()
+            ?: getString(R.string.widget_resize)
+        menu = null
+        resizing = ResizeSession(id, widgetSlot.scaleOf(id), label)
     }
 
     private fun showAppMenu(shortcut: Shortcut) {
@@ -221,6 +379,7 @@ class LauncherActivity : ComponentActivity() {
     private fun showSettingsMenu() {
         val items = mutableListOf(
             MenuItem(getString(R.string.action_appearance)) { showAppearanceMenu() },
+            MenuItem(getString(R.string.action_widgets)) { showWidgetsMenu() },
             MenuItem(getString(R.string.action_android_settings)) {
                 menu = null
                 startAppIntent(Intent(Settings.ACTION_SETTINGS))
@@ -230,20 +389,9 @@ class LauncherActivity : ComponentActivity() {
                 checkForUpdates()
             },
         )
-        // The band is capped, so only offer "add" while there's room for another.
-        if (widgetSlot.canAddMore()) {
-            items += MenuItem(getString(R.string.widget_add)) { showWidgetPicker() }
-        }
-        if (widgetSlot.hasWidgets()) {
-            items += MenuItem(getString(R.string.widget_resize)) {
-                pickHostedWidget(R.string.widget_resize, ::showSizeMenu)
-            }
-            items += MenuItem(getString(R.string.widget_align)) {
-                pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
-            }
-            items += MenuItem(getString(R.string.widget_remove)) {
-                pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
-            }
+        // Only offered until it's granted; once the card can read sessions there's nothing to do.
+        if (!nowPlayingController.hasAccess()) {
+            items += MenuItem(getString(R.string.action_now_playing)) { showNowPlayingHelp() }
         }
         val hidden = viewModel.hiddenApps
         if (hidden.isNotEmpty()) {
@@ -254,6 +402,45 @@ class LauncherActivity : ComponentActivity() {
         menu = MenuSpec(getString(R.string.action_settings), items)
     }
 
+    /** Spells out the adb grant for notification access, since the TV can't ask on screen. */
+    private fun showNowPlayingHelp() {
+        menu = null
+        val component = ComponentName(this, NowPlayingListenerService::class.java)
+        val command = "adb shell cmd notification allow_listener ${component.flattenToShortString()}"
+        AlertDialog.Builder(this)
+            .setTitle(R.string.now_playing_permission_title)
+            .setMessage(getString(R.string.now_playing_permission_message, command))
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** Everything about the widget band, kept off the top-level settings menu. */
+    private fun showWidgetsMenu() {
+        val items = mutableListOf<MenuItem>()
+        // The band is capped, so only offer "add" while there's room for another.
+        if (widgetSlot.canAddMore()) {
+            items += MenuItem(getString(R.string.widget_add)) { showWidgetPicker() }
+        }
+        if (widgetSlot.hasWidgets()) {
+            items += MenuItem(getString(R.string.widget_resize)) {
+                pickHostedWidget(R.string.widget_resize, ::startResize)
+            }
+            items += MenuItem(getString(R.string.widget_align)) {
+                pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
+            }
+            items += MenuItem(getString(R.string.widget_shape)) {
+                pickHostedWidget(R.string.widget_shape, ::showShapeMenu)
+            }
+            items += MenuItem(getString(R.string.widget_render)) {
+                pickHostedWidget(R.string.widget_render, ::showFitMenu)
+            }
+            items += MenuItem(getString(R.string.widget_remove)) {
+                pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
+            }
+        }
+        menu = MenuSpec(getString(R.string.action_widgets), items)
+    }
+
     private fun showAppearanceMenu() {
         menu = MenuSpec(
             title = getString(R.string.action_appearance),
@@ -262,6 +449,21 @@ class LauncherActivity : ComponentActivity() {
                 MenuItem(getString(R.string.action_clock)) { showClockMenu() },
                 MenuItem(getString(R.string.action_background)) { showBackgroundMenu() },
                 MenuItem(getString(R.string.action_card_size)) { showCardSizeMenu() },
+                MenuItem(getString(R.string.action_display)) { showDisplayMenu() },
+            ),
+        )
+    }
+
+    private fun showDisplayMenu() {
+        menu = MenuSpec(
+            title = getString(R.string.action_display),
+            items = listOf(
+                toggleItem(R.string.display_usage_count, showUsageCount) {
+                    settings.setShowUsageCount(it); showUsageCount = it; showDisplayMenu()
+                },
+                toggleItem(R.string.display_app_names, showAppLabels) {
+                    settings.setShowAppLabels(it); showAppLabels = it; showDisplayMenu()
+                },
             ),
         )
     }
@@ -288,14 +490,85 @@ class LauncherActivity : ComponentActivity() {
             settings.setBackground(style)
             background = style
         }
+        val items = mutableListOf(
+            choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
+            choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
+            choice(R.string.background_solid, BackgroundStyle.SOLID),
+            MenuItem(getString(R.string.background_image)) { menu = null; pickWallpaper() },
+            MenuItem(getString(R.string.background_brightness)) {
+                menu = null
+                backgroundAdjust = settings.backgroundIntensity()
+            },
+        )
+        if (settings.backgroundImageUri() != null) {
+            items += MenuItem(getString(R.string.wallpaper_fit)) { showWallpaperFitMenu() }
+            items += MenuItem(getString(R.string.background_image_remove)) {
+                menu = null
+                settings.setBackgroundImageUri(null)
+                backgroundImage = null
+                if (background == BackgroundStyle.WALLPAPER) {
+                    settings.setBackground(BackgroundStyle.AMBIENT)
+                    background = BackgroundStyle.AMBIENT
+                }
+            }
+        }
+        menu = MenuSpec(getString(R.string.action_background), items)
+    }
+
+    private fun showWallpaperFitMenu() {
+        fun choice(label: Int, fit: WallpaperFit) = MenuItem(getString(label)) {
+            menu = null
+            settings.setWallpaperFit(fit)
+            wallpaperFit = fit
+        }
         menu = MenuSpec(
-            title = getString(R.string.action_background),
+            title = getString(R.string.wallpaper_fit),
             items = listOf(
-                choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
-                choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
-                choice(R.string.background_solid, BackgroundStyle.SOLID),
+                choice(R.string.wallpaper_fit_fill, WallpaperFit.FILL),
+                choice(R.string.wallpaper_fit_stretch, WallpaperFit.STRETCH),
+                choice(R.string.wallpaper_fit_fit, WallpaperFit.FIT),
+                choice(R.string.wallpaper_fit_center, WallpaperFit.CENTER),
+                choice(R.string.wallpaper_fit_span, WallpaperFit.SPAN),
             ),
         )
+    }
+
+    /** Opens the system document picker for an image to use as the wallpaper. */
+    private fun pickWallpaper() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_PICK_WALLPAPER)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No image picker on this device", e)
+            toast(R.string.background_no_picker)
+        }
+    }
+
+    /** Decodes the stored wallpaper off the main thread and publishes it to the UI. */
+    private fun loadBackgroundImage() {
+        val uri = settings.backgroundImageUri()?.let(Uri::parse)
+        if (uri == null) {
+            backgroundImage = null
+            return
+        }
+        lifecycleScope.launch {
+            backgroundImage = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                    var sample = 1
+                    while (bounds.outWidth > 0 && bounds.outWidth / sample > 2560) sample *= 2
+                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                    contentResolver.openInputStream(uri)
+                        ?.use { BitmapFactory.decodeStream(it, null, opts) }
+                        ?.asImageBitmap()
+                }.getOrNull()
+            }
+        }
     }
 
     private fun showClockMenu() {
@@ -384,23 +657,6 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    private fun showSizeMenu(id: Int) {
-        fun choice(label: Int, size: WidgetSize) = MenuItem(getString(label)) {
-            menu = null
-            widgetSlot.resize(id, size)
-        }
-        menu = MenuSpec(
-            title = getString(R.string.widget_resize),
-            items = listOf(
-                choice(R.string.widget_size_xsmall, WidgetSize.XSMALL),
-                choice(R.string.widget_size_small, WidgetSize.SMALL),
-                choice(R.string.widget_size_medium, WidgetSize.MEDIUM),
-                choice(R.string.widget_size_large, WidgetSize.LARGE),
-                choice(R.string.widget_size_xlarge, WidgetSize.XLARGE),
-            ),
-        )
-    }
-
     private fun showAlignmentMenu(id: Int) {
         fun choice(label: Int, alignment: WidgetAlignment) = MenuItem(getString(label)) {
             menu = null
@@ -412,6 +668,36 @@ class LauncherActivity : ComponentActivity() {
                 choice(R.string.widget_align_start, WidgetAlignment.START),
                 choice(R.string.widget_align_center, WidgetAlignment.CENTER),
                 choice(R.string.widget_align_end, WidgetAlignment.END),
+            ),
+        )
+    }
+
+    private fun showShapeMenu(id: Int) {
+        fun choice(label: Int, shape: WidgetShape) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.reshape(id, shape)
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_shape),
+            items = listOf(
+                choice(R.string.widget_shape_wide, WidgetShape.WIDE),
+                choice(R.string.widget_shape_panoramic, WidgetShape.PANORAMIC),
+                choice(R.string.widget_shape_standard, WidgetShape.STANDARD),
+                choice(R.string.widget_shape_square, WidgetShape.SQUARE),
+            ),
+        )
+    }
+
+    private fun showFitMenu(id: Int) {
+        fun choice(label: Int, fit: WidgetFit) = MenuItem(getString(label)) {
+            menu = null
+            widgetSlot.refit(id, fit)
+        }
+        menu = MenuSpec(
+            title = getString(R.string.widget_render),
+            items = listOf(
+                choice(R.string.widget_render_native, WidgetFit.NATIVE),
+                choice(R.string.widget_render_fit, WidgetFit.FIT),
             ),
         )
     }
@@ -492,6 +778,7 @@ class LauncherActivity : ComponentActivity() {
     private companion object {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
+        const val REQUEST_PICK_WALLPAPER = 2001
     }
 }
 

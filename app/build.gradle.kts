@@ -40,6 +40,11 @@ android {
         compose = true
     }
     buildTypes {
+        debug {
+            // Debug installs beside the release app (different id, own data), so a work-in-
+            // progress build can be tested on a TV whose real launcher must stay untouched.
+            applicationIdSuffix = ".dev"
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
