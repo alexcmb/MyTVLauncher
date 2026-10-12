@@ -102,6 +102,7 @@
     <string name="update_install">Install</string>
     <string name="update_downloading">Downloading update…</string>
     <string name="update_download_failed">Download failed</string>
+    <string name="update_rejected">Update refused: the APK doesn\'t match this app</string>
     <string name="accent_auto_short">Auto</string>
     <string name="background_style">Style</string>
     <string name="background_wallpaper">Image</string>
