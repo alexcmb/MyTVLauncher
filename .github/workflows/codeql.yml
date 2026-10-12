@@ -9,6 +9,9 @@ on:
   pull_request:
   schedule:
     - cron: '17 4 * * 1'
+  # "Run workflow" in the Actions tab: re-analyse a branch on demand (e.g. if a push event
+  # was missed and the alerts still describe older code).
+  workflow_dispatch:
 
 permissions:
   contents: read
