@@ -572,9 +572,12 @@ class LauncherActivity : ComponentActivity() {
 
     private fun showBackgroundStyleMenu() = openMenu {
         // "Image" is only a style once there's an image to show.
-        val styles = BackgroundStyle.entries.filter {
-            it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null
-        }
+        val styles = listOf(
+            BackgroundStyle.AMBIENT,
+            BackgroundStyle.ACCENT_GRADIENT,
+            BackgroundStyle.SOLID,
+            BackgroundStyle.WALLPAPER,
+        ).filter { it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null }
         MenuSpec(
             title = getString(R.string.background_style),
             items = styles.map { style ->

@@ -188,7 +188,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().background(base)) {
             // Background decoration, behind the content.
             when (background) {
-                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused)
+                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused, intensity)
                 BackgroundStyle.ACCENT_GRADIENT -> Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
@@ -837,21 +837,50 @@ private fun NowPlayingCard(
     }
 }
 
-/** The focused app's banner, dimmed behind the screen. No blur: RenderEffect is API 31+. */
+/**
+ * The focused app's banner as hero art in the top-right corner, fading into the background
+ * towards the left (so the hero title over there stays clean) and towards the bottom (no hard
+ * edge). Drawn smaller than full-screen so a low-resolution banner doesn't blow up into a blur.
+ * [intensity] (the background-brightness setting) sets how strongly it shows. No blur:
+ * RenderEffect is API 31+.
+ */
 @Composable
-private fun AmbientBackdrop(focused: Shortcut?) {
+private fun AmbientBackdrop(focused: Shortcut?, intensity: Float) {
     Crossfade(targetState = focused?.banner, label = "backdrop") { banner ->
         if (banner != null) {
             val bitmap = remember(banner) { banner.toBitmap().asImageBitmap() }
             Box(Modifier.fillMaxSize()) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alpha = 0.30f,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.55f),
-                )
-                Box(Modifier.fillMaxSize().background(Background.copy(alpha = 0.55f)))
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .fillMaxWidth(0.62f)
+                        .fillMaxHeight(0.62f),
+                ) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alpha = lerpF(0.25f, 0.8f, intensity),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // Fade the art out into the plain background on its left and bottom edges.
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.horizontalGradient(
+                                0f to Background,
+                                0.45f to Background.copy(alpha = 0f),
+                            )
+                        )
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.35f to Background.copy(alpha = 0f),
+                                1f to Background,
+                            )
+                        )
+                    )
+                }
             }
         }
     }
