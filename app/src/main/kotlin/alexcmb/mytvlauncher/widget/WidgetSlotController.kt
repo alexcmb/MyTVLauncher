@@ -11,7 +11,9 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
+import android.util.SizeF
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -104,7 +106,7 @@ class WidgetSlotController(private val activity: Activity) {
         val view = host.createView(activity, hosted.id, info)
         val w = hosted.layoutWidthDp()
         val h = hosted.layoutHeightDp()
-        view.updateAppWidgetSize(null, w, h, w, h)
+        view.setDisplaySize(w, h)
         return view
     }
 
@@ -168,7 +170,7 @@ class WidgetSlotController(private val activity: Activity) {
      * resized in place rather than rebuilt on every step.
      */
     fun tellSize(view: View, widthDp: Int, heightDp: Int) {
-        (view as? AppWidgetHostView)?.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
+        (view as? AppWidgetHostView)?.setDisplaySize(widthDp, heightDp)
     }
 
     fun align(id: Int, alignment: WidgetAlignment) {
@@ -291,5 +293,18 @@ class WidgetSlotController(private val activity: Activity) {
         const val REQUEST_BIND = 1001
         const val REQUEST_CONFIGURE = 1002
         const val REQUEST_PICK = 1003
+    }
+}
+
+/**
+ * Tells the provider the one size this view is shown at (dp), so it lays out to match. Android
+ * 12 replaced the min/max pair with a list of exact sizes; older systems only know the pair.
+ */
+private fun AppWidgetHostView.setDisplaySize(widthDp: Int, heightDp: Int) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        updateAppWidgetSize(Bundle(), listOf(SizeF(widthDp.toFloat(), heightDp.toFloat())))
+    } else {
+        @Suppress("DEPRECATION")
+        updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
     }
 }
