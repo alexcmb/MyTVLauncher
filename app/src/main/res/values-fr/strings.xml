@@ -14,6 +14,13 @@
     <string name="action_card_size">Taille des cartes</string>
     <string name="action_display">Affichage</string>
     <string name="action_widgets">Widgets</string>
+    <string name="action_tabs">Onglets</string>
+    <string name="tabs_startup">Onglet au démarrage</string>
+    <string name="tabs_reset">Rétablir les onglets par défaut</string>
+    <string name="tab_hidden">Masqué</string>
+    <string name="tab_show">Afficher l\'onglet</string>
+    <string name="tab_move_left">Déplacer à gauche</string>
+    <string name="tab_move_right">Déplacer à droite</string>
     <string name="display_usage_count">Compteur d\'usage</string>
     <string name="display_app_names">Noms d\'apps</string>
     <string name="background_ambient">Bannière ambiante</string>

@@ -79,4 +79,46 @@ class HomeTabsTest {
         val tabs = HomeTabs.from(listOf(group("Games", shortcut("steam", 9))), "All", emptyList(), "Sources")
         assertEquals(listOf("All", "Games"), tabs.map { it.title })
     }
+
+    private val threeGroups = listOf(
+        group("Streaming", shortcut("netflix", 4)),
+        group("Games", shortcut("steam", 9)),
+        group("Music", shortcut("spotify", 1)),
+    )
+    private val hdmi = listOf(TvSource("hdmi1", "HDMI 1", 9))
+
+    @Test
+    fun `a saved order rearranges the tabs after the hub`() {
+        val tabs = HomeTabs.from(
+            threeGroups, "All", hdmi, "Sources",
+            order = listOf("Music", "Streaming", HomeTabs.SOURCES_KEY, "Games"),
+        )
+        assertEquals(listOf("All", "Music", "Streaming", "Sources", "Games"), tabs.map { it.title })
+    }
+
+    @Test
+    fun `tabs missing from the saved order keep their default place after it`() {
+        val tabs = HomeTabs.from(threeGroups, "All", hdmi, "Sources", order = listOf("Music"))
+        assertEquals(listOf("All", "Music", "Sources", "Streaming", "Games"), tabs.map { it.title })
+    }
+
+    @Test
+    fun `hidden tabs are left out but the hub always stays first`() {
+        val tabs = HomeTabs.from(
+            threeGroups, "All", hdmi, "Sources",
+            hidden = setOf(HomeTabs.SOURCES_KEY, "Games", HomeTabs.HOME_KEY),
+        )
+        assertEquals(listOf("All", "Streaming", "Music"), tabs.map { it.title })
+        assertEquals(HomeTabs.HOME_KEY, tabs.first().key)
+    }
+
+    @Test
+    fun `moving a tab swaps it with its neighbour and stops at the ends`() {
+        val keys = listOf("a", "b", "c")
+        assertEquals(listOf("b", "a", "c"), HomeTabs.move(keys, "b", -1))
+        assertEquals(listOf("a", "c", "b"), HomeTabs.move(keys, "b", +1))
+        assertEquals(keys, HomeTabs.move(keys, "a", -1))
+        assertEquals(keys, HomeTabs.move(keys, "c", +1))
+        assertEquals(keys, HomeTabs.move(keys, "zzz", +1))
+    }
 }

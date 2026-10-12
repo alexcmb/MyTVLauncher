@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,7 +44,8 @@ import androidx.tv.material3.Text
 /**
  * One line of a [TvMenu]. [value] shows the current setting on the right, [selected] marks the
  * active choice of a pick-one list with a check, and [submenu] adds a chevron for rows that
- * open another level. An optional [swatch] shows a colour choice.
+ * open another level. An optional [swatch] shows a colour choice. [divider] draws a separator
+ * above the row, to set a group apart (the system actions, a destructive "remove").
  */
 data class MenuItem(
     val label: String,
@@ -51,6 +53,7 @@ data class MenuItem(
     val value: String? = null,
     val selected: Boolean = false,
     val submenu: Boolean = false,
+    val divider: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -62,12 +65,13 @@ private val Muted = Color(0xFF9AA0B4)
 
 /**
  * A menu over the home screen: scrim, dark panel, focusable rows. Back steps out. [focusMemory]
- * remembers the last focused row per menu title, so stepping back lands on the row that opened
- * the submenu; a fresh menu starts on its selected choice, else its first row.
+ * remembers the last focused row (by label, so it survives rows moving) per menu title, so
+ * stepping back lands on the row that opened the submenu; a fresh menu starts on its selected
+ * choice, else its first row.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, Int>, onDismiss: () -> Unit) {
+fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
     val requesters = remember(spec.items.size) { List(spec.items.size) { FocusRequester() } }
     // Keyed on the title (a new level) and the row count (a level that grew or shrank), not on
@@ -76,6 +80,7 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, Int>, onDismiss: () -
     LaunchedEffect(spec.title, spec.items.size) {
         if (requesters.isEmpty()) return@LaunchedEffect
         val target = focusMemory[spec.title]
+            ?.let { label -> spec.items.indexOfFirst { it.label == label }.takeIf { it >= 0 } }
             ?: spec.items.indexOfFirst { it.selected }.takeIf { it >= 0 }
             ?: 0
         requesters[target.coerceIn(0, requesters.lastIndex)].requestFocus()
@@ -119,6 +124,15 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, Int>, onDismiss: () -
             )
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 spec.items.forEachIndexed { index, item ->
+                    if (item.divider && index > 0) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .height(1.dp)
+                                .background(Color.White.copy(alpha = 0.12f))
+                        )
+                    }
                     // Trap the focus inside the menu: left/right have nowhere to go here and
                     // would otherwise escape to the launcher behind the scrim, and so would up
                     // off the first row or down off the last. Cancel those moves; up/down
@@ -131,7 +145,7 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, Int>, onDismiss: () -
                             if (index == 0) up = FocusRequester.Cancel
                             if (index == spec.items.lastIndex) down = FocusRequester.Cancel
                         }
-                    MenuRow(item, rowModifier) { focusMemory[spec.title] = index }
+                    MenuRow(item, rowModifier) { focusMemory[spec.title] = item.label }
                 }
             }
         }

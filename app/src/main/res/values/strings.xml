@@ -15,6 +15,13 @@
     <string name="action_card_size">Card size</string>
     <string name="action_display">Display</string>
     <string name="action_widgets">Widgets</string>
+    <string name="action_tabs">Tabs</string>
+    <string name="tabs_startup">Startup tab</string>
+    <string name="tabs_reset">Restore default tabs</string>
+    <string name="tab_hidden">Hidden</string>
+    <string name="tab_show">Show tab</string>
+    <string name="tab_move_left">Move left</string>
+    <string name="tab_move_right">Move right</string>
     <string name="display_usage_count">Usage counter</string>
     <string name="display_app_names">App names</string>
     <string name="background_ambient">Ambient banner</string>

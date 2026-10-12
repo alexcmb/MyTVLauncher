@@ -88,8 +88,8 @@ class LauncherActivity : ComponentActivity() {
     // on every recomposition, so it always shows live values — a check moving to the new choice,
     // "Fond · Dégradé" updating — and choosing something can leave the menu open.
     private val menuStack = mutableStateListOf<() -> MenuSpec>()
-    // Last focused row per menu title, so Back lands on the row that opened the submenu.
-    private val menuFocus = mutableMapOf<String, Int>()
+    // Last focused row (its label) per menu title, so Back lands on the row that opened the submenu.
+    private val menuFocus = mutableMapOf<String, String>()
 
     /** Shows a menu level: refreshes the top level if it has the same title, else pushes. */
     private fun openMenu(build: () -> MenuSpec) {
@@ -135,6 +135,11 @@ class LauncherActivity : ComponentActivity() {
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
     private var showUsageCount by mutableStateOf(true)
     private var showAppLabels by mutableStateOf(false)
+    private var tabOrder by mutableStateOf<List<String>>(emptyList())
+    private var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
+    private var startupTab by mutableStateOf(HomeTabs.HOME_KEY)
+    // Bumped on each HOME press; the home screen goes back to the startup tab when it changes.
+    private var homeRequests by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -152,6 +157,9 @@ class LauncherActivity : ComponentActivity() {
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
         showAppLabels = settings.showAppLabels()
+        tabOrder = settings.tabOrder()
+        hiddenTabs = settings.hiddenTabs()
+        startupTab = settings.startupTab() ?: HomeTabs.HOME_KEY
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -175,6 +183,7 @@ class LauncherActivity : ComponentActivity() {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(
                 groups, stringResource(R.string.title_home), sources, stringResource(R.string.title_sources),
+                tabOrder, hiddenTabs,
             )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
                 Box {
@@ -199,6 +208,8 @@ class LauncherActivity : ComponentActivity() {
                         onOpenNowPlaying = nowPlayingController::openApp,
                         onSettings = ::showSettingsMenu,
                         focusTracker = focusTracker,
+                        startupTab = startupTab,
+                        homeRequests = homeRequests,
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
@@ -284,6 +295,24 @@ class LauncherActivity : ComponentActivity() {
         sources = sourceController.sources()
         nowPlaying = nowPlayingController.nowPlaying()
         refreshWidgets()
+    }
+
+    // singleTask: HOME while we're the task brings us here instead of a new instance.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            // Anything half-done is dropped, as Back would: menus, an uncommitted slider, a prompt.
+            menuStack.clear()
+            menuFocus.clear()
+            if (resizing != null) {
+                resizing = null
+                refreshWidgets()
+            }
+            backgroundAdjust?.let { backgroundIntensity = settings.backgroundIntensity() }
+            backgroundAdjust = null
+            namingCategoryFor = null
+            homeRequests++
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -378,7 +407,7 @@ class LauncherActivity : ComponentActivity() {
                     closeMenus()
                     viewModel.hideApp(shortcut)
                 },
-                MenuItem(getString(R.string.menu_uninstall)) {
+                MenuItem(getString(R.string.menu_uninstall), divider = true) {
                     closeMenus()
                     startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
                 },
@@ -406,7 +435,7 @@ class LauncherActivity : ComponentActivity() {
                     closeMenus()
                     viewModel.setCategory(shortcut, category)
                 }
-            } + MenuItem(getString(R.string.category_new)) {
+            } + MenuItem(getString(R.string.category_new), divider = true) {
                 closeMenus()
                 namingCategoryFor = shortcut
             },
@@ -414,9 +443,10 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun showSettingsMenu() = openMenu {
-        // Launcher settings first, then the one-shot actions.
+        // Launcher settings first, then — set apart by a divider — the system and one-shot actions.
         val items = mutableListOf(
             MenuItem(getString(R.string.action_appearance), submenu = true) { showAppearanceMenu() },
+            MenuItem(getString(R.string.action_tabs), submenu = true) { showTabsMenu() },
             MenuItem(getString(R.string.action_widgets), submenu = true) { showWidgetsMenu() },
         )
         val hidden = viewModel.hiddenApps
@@ -429,9 +459,13 @@ class LauncherActivity : ComponentActivity() {
         }
         // Only offered until it's granted; once the card can read sessions there's nothing to do.
         if (!nowPlayingController.hasAccess()) {
-            items += MenuItem(getString(R.string.action_now_playing)) { showNowPlayingHelp() }
+            items += MenuItem(getString(R.string.action_now_playing), divider = true) { showNowPlayingHelp() }
         }
-        items += MenuItem(getString(R.string.action_check_updates), value = installedVersion()) {
+        items += MenuItem(
+            getString(R.string.action_check_updates),
+            value = installedVersion(),
+            divider = nowPlayingController.hasAccess(),
+        ) {
             closeMenus()
             checkForUpdates()
         }
@@ -440,6 +474,92 @@ class LauncherActivity : ComponentActivity() {
             startAppIntent(Intent(Settings.ACTION_SETTINGS))
         }
         MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    /** Every tab after the hub in its current order, hidden ones included (they can come back). */
+    private fun movableTabs() = HomeTabs.from(
+        viewModel.browseContent.value.orEmpty(),
+        getString(R.string.title_home),
+        sources,
+        getString(R.string.title_sources),
+        tabOrder,
+    ).drop(1)
+
+    private fun tabTitle(key: String): String = when (key) {
+        HomeTabs.HOME_KEY -> getString(R.string.title_home)
+        HomeTabs.SOURCES_KEY -> getString(R.string.title_sources)
+        else -> key
+    }
+
+    /** The tab bar: which tab the screen opens on, then each tab to show, hide or move. */
+    private fun showTabsMenu() = openMenu {
+        val tabs = movableTabs()
+        val items = mutableListOf(
+            MenuItem(getString(R.string.tabs_startup), value = tabTitle(startupTab), submenu = true) {
+                showStartupTabMenu()
+            },
+        )
+        tabs.forEachIndexed { index, tab ->
+            items += MenuItem(
+                tab.title,
+                value = if (tab.key in hiddenTabs) getString(R.string.tab_hidden) else null,
+                submenu = true,
+                divider = index == 0,
+            ) { showTabMenu(tab.key) }
+        }
+        if (tabOrder.isNotEmpty() || hiddenTabs.isNotEmpty()) {
+            items += MenuItem(getString(R.string.tabs_reset), divider = true) {
+                settings.setTabOrder(emptyList()); tabOrder = emptyList()
+                settings.setHiddenTabs(emptySet()); hiddenTabs = emptySet()
+            }
+        }
+        MenuSpec(getString(R.string.action_tabs), items)
+    }
+
+    private fun showStartupTabMenu() = openMenu {
+        // Only the tabs actually in the bar: opening on a hidden one would land on the hub.
+        val keys = listOf(HomeTabs.HOME_KEY) + movableTabs().map { it.key }.filterNot { it in hiddenTabs }
+        MenuSpec(
+            title = getString(R.string.tabs_startup),
+            items = keys.map { key ->
+                MenuItem(tabTitle(key), selected = key == startupTab) {
+                    settings.setStartupTab(key.takeIf { it != HomeTabs.HOME_KEY })
+                    startupTab = key
+                }
+            },
+        )
+    }
+
+    /** One tab: show/hide it, or move it along the bar (the menu stays open to move again). */
+    private fun showTabMenu(key: String) = openMenu {
+        val keys = movableTabs().map { it.key }
+        val position = keys.indexOf(key)
+        fun move(delta: Int) {
+            val next = HomeTabs.move(keys, key, delta)
+            settings.setTabOrder(next)
+            tabOrder = next
+        }
+        MenuSpec(
+            title = tabTitle(key),
+            items = listOf(
+                toggleItem(R.string.tab_show, key !in hiddenTabs) { show ->
+                    val next = if (show) hiddenTabs - key else hiddenTabs + key
+                    settings.setHiddenTabs(next)
+                    hiddenTabs = next
+                    // A hidden tab can't be where the screen opens.
+                    if (!show && startupTab == key) {
+                        settings.setStartupTab(null)
+                        startupTab = HomeTabs.HOME_KEY
+                    }
+                },
+                MenuItem(
+                    getString(R.string.tab_move_left),
+                    value = "${position + 2} / ${keys.size + 1}",
+                    divider = true,
+                ) { move(-1) },
+                MenuItem(getString(R.string.tab_move_right)) { move(+1) },
+            ),
+        )
     }
 
     private fun installedVersion(): String? = runCatching {
@@ -468,11 +588,12 @@ class LauncherActivity : ComponentActivity() {
         if (widgetSlot.canAddMore()) {
             items += MenuItem(getString(R.string.widget_add), submenu = true) { showWidgetPicker() }
         }
-        items += widgetSlot.hostedWidgets().map { (id, label) ->
+        items += widgetSlot.hostedWidgets().mapIndexed { index, (id, label) ->
             MenuItem(
                 label.toString(),
                 value = hostedWidget(id)?.let { alignmentName(it.alignment) },
                 submenu = true,
+                divider = index == 0,
             ) { showWidgetMenu(id) }
         }
         MenuSpec(getString(R.string.action_widgets), items)
@@ -504,7 +625,7 @@ class LauncherActivity : ComponentActivity() {
                     value = widget?.let { widgetFitName(it.fit) },
                     submenu = true,
                 ) { showFitMenu(id) },
-                MenuItem(getString(R.string.widget_menu_remove)) {
+                MenuItem(getString(R.string.widget_menu_remove), divider = true) {
                     closeMenus()
                     widgetSlot.remove(id)
                 },
@@ -545,18 +666,20 @@ class LauncherActivity : ComponentActivity() {
                     value = if (accentAuto) getString(R.string.accent_auto_short) else accentName(accent),
                     submenu = true,
                 ) { showAccentMenu() },
-                MenuItem(getString(R.string.action_clock), submenu = true) { showClockMenu() },
                 MenuItem(
                     getString(R.string.action_background),
                     value = backgroundStyleName(background),
                     submenu = true,
                 ) { showBackgroundMenu() },
+                // Colours above, layout of the screen below.
                 MenuItem(
                     getString(R.string.action_card_size),
                     value = cardSizeName(cardSize),
                     submenu = true,
+                    divider = true,
                 ) { showCardSizeMenu() },
                 MenuItem(getString(R.string.action_display), submenu = true) { showDisplayMenu() },
+                MenuItem(getString(R.string.action_clock), submenu = true) { showClockMenu() },
             ),
         )
     }
@@ -668,7 +791,7 @@ class LauncherActivity : ComponentActivity() {
                 value = wallpaperFitName(wallpaperFit),
                 submenu = true,
             ) { showWallpaperFitMenu() }
-            items += MenuItem(getString(R.string.background_image_remove)) {
+            items += MenuItem(getString(R.string.background_image_remove), divider = true) {
                 settings.setBackgroundImageUri(null)
                 backgroundImage = null
                 if (background == BackgroundStyle.WALLPAPER) {

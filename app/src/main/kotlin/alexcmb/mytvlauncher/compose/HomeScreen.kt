@@ -53,6 +53,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -174,8 +175,13 @@ fun HomeScreen(
     onOpenNowPlaying: () -> Unit,
     onSettings: () -> Unit,
     focusTracker: FocusTracker,
+    startupTab: String,
+    homeRequests: Int,
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
+    // The selection is held by key, not position, so a tab moved, hidden or added in front
+    // doesn't silently switch to another one. A key that's gone (hidden) falls back to the hub.
+    var selectedKey by remember { mutableStateOf(startupTab) }
+    val selectedTab = tabs.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
     // DPAD-up from the content lands back on the selected tab. The tabs are centred, so
@@ -184,6 +190,16 @@ fun HomeScreen(
     // The Home chip, so Back from another tab's chips can return to it.
     val homeTabFocus = remember { FocusRequester() }
     var topBarFocused by remember { mutableStateOf(false) }
+
+    // HOME pressed while the launcher is up (or to come back to it): the startup tab, with the
+    // focus on its chip — the card that had it may belong to a tab that's no longer shown.
+    LaunchedEffect(homeRequests) {
+        if (homeRequests == 0) return@LaunchedEffect
+        selectedKey = startupTab
+        focused = null
+        withFrameNanos { } // let the chip for the new selection take tabsFocus
+        runCatching { tabsFocus.requestFocus() }
+    }
 
     // Back walks up the screen: content -> the tabs -> the Home tab. On Home's tabs there's
     // nowhere left to go (a launcher must not exit). Menus and sliders register their own
@@ -252,7 +268,7 @@ fun HomeScreen(
                 TopBar(
                     tabs, selectedTab, clock, tabsFocus, homeTabFocus, onSettings,
                     Modifier.onFocusChanged { topBarFocused = it.hasFocus },
-                ) { selectedTab = it; focused = null }
+                ) { selectedKey = tabs[it].key; focused = null }
                 // The hero band reserves room for a focused app's name. On the hub its top rows
                 // (now-playing, widgets) focus no app, so collapse it there to hand that space to
                 // the content — otherwise a now-playing card plus this empty band push the
