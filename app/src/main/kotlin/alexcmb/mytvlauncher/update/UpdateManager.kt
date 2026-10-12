@@ -45,7 +45,9 @@ class UpdateManager(private val context: Context) {
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
             val apkUrl = firstApkAssetUrl(json) ?: return@withContext null
             if (!UpdateVerifier.isTrustedApkUrl(apkUrl, REPO)) {
-                Log.w(TAG, "Ignoring release asset outside $REPO: $apkUrl")
+                // The URL itself stays out of the log: it's remote data, and could carry
+                // line breaks that forge log entries.
+                Log.w(TAG, "Ignoring a release asset hosted outside $REPO")
                 return@withContext null
             }
             val name = json.getString("tag_name").removePrefix("v")
