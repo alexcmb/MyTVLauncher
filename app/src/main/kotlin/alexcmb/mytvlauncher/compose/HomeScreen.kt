@@ -178,6 +178,7 @@ fun HomeScreen(
     focusTracker: FocusTracker,
     startupTab: String,
     homeRequests: Int,
+    pinnedApps: List<String>,
 ) {
     // The selection is held by key, not position, so a tab moved, hidden or added in front
     // doesn't silently switch to another one. A key that's gone (hidden) falls back to the hub.
@@ -284,7 +285,8 @@ fun HomeScreen(
                     // The first tab is a hub: widgets and a few favourites, nothing endless.
                     selectedTab == 0 && tab is AppsTab -> Hub(
                         widgets = widgets,
-                        favourites = tab.shortcuts.take(FAVOURITES),
+                        favourites = Favourites.pick(tab.shortcuts, pinnedApps, FAVOURITES),
+                        pinned = pinnedApps.toSet(),
                         cardSize = cardSize,
                         tabsFocus = tabsFocus,
                         showAppLabels = showAppLabels,
@@ -439,6 +441,7 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Bool
 private fun Hub(
     widgets: List<WidgetTile>,
     favourites: List<Shortcut>,
+    pinned: Set<String>,
     cardSize: CardSize,
     tabsFocus: FocusRequester,
     showAppLabels: Boolean,
@@ -565,6 +568,19 @@ private fun Hub(
                 WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
             }
         }
+        // Pinning or moving a favourite reorders the row under the user's feet: keep the card
+        // they were on in view, or it would be scrolled off — and the focus, sent back to it
+        // when the menu closes, would land nowhere.
+        val order = favourites.map { it.id }
+        LaunchedEffect(order) {
+            val index = order.indexOf(favouritesMemory.lastId)
+            if (index < 0) return@LaunchedEffect
+            val layout = favouritesState.layoutInfo
+            val shown = layout.visibleItemsInfo.any {
+                it.index == index && it.offset >= 0 && it.offset + it.size <= layout.viewportEndOffset
+            }
+            if (!shown) favouritesState.scrollToItem(index)
+        }
         if (favourites.isNotEmpty()) {
             Column(
                 modifier = Modifier
@@ -575,8 +591,11 @@ private fun Hub(
                         alpha = 1f - 0.75f * spotlight
                     },
             ) {
+                // "Favourites" once the user has pinned something; until then it's honestly
+                // just the most used.
+                val pinnedAny = favourites.any { it.id in pinned }
                 Text(
-                    text = stringResource(R.string.home_most_used),
+                    text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
                     color = Muted,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(start = 48.dp, bottom = 8.dp),
@@ -595,7 +614,8 @@ private fun Hub(
                         AppCard(
                             shortcut, showAppLabels, onLaunch, onLongPress,
                             { favouritesMemory.lastId = it.id; onFocus(it) },
-                            Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(),
+                            Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(favouritesMemory),
+                            pinned = shortcut.id in pinned,
                         )
                     }
                 }
@@ -761,7 +781,7 @@ private fun AppsGrid(
             AppCard(
                 shortcut, showAppLabels, onLaunch, onLongPress,
                 { focusedIndex = index; memory.lastId = it.id; onFocus(it) },
-                Modifier.focusTarget(memory, shortcut.id).trackFocus(),
+                Modifier.focusTarget(memory, shortcut.id).trackFocus(memory),
             )
         }
     }
@@ -1014,6 +1034,7 @@ private fun AppCard(
     onLongPress: (Shortcut) -> Unit,
     onFocus: (Shortcut) -> Unit,
     modifier: Modifier,
+    pinned: Boolean = false,
 ) {
     Card(
         onClick = { onLaunch(shortcut) },
@@ -1046,6 +1067,19 @@ private fun AppCard(
                 // No banner: the icon needs its name regardless of the setting.
                 shortcut.icon?.let { DrawableImage(it, Modifier.size(64.dp), ContentScale.Fit) }
                 CardLabel(shortcut.title)
+            }
+            if (pinned) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_pin),
+                    contentDescription = stringResource(R.string.menu_pin),
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .padding(4.dp)
+                        .size(12.dp),
+                )
             }
         }
     }
@@ -1211,4 +1245,16 @@ private fun Modifier.trackFocus(): Modifier {
     return this
         .focusRequester(requester)
         .onFocusChanged { if (it.isFocused) tracker.last = requester }
+}
+
+/**
+ * The same for a card of a list with a [FocusMemory]: the tracker keeps the list's requester,
+ * which follows the remembered app rather than this particular card. A card that moves (a
+ * favourite pinned or reordered from its menu) is recreated by the lazy list, and a requester
+ * of its own would go with the old one — the focus would then fall back to the settings orb.
+ */
+@Composable
+private fun Modifier.trackFocus(memory: FocusMemory): Modifier {
+    val tracker = LocalFocusTracker.current ?: return this
+    return this.onFocusChanged { if (it.isFocused) tracker.last = memory.requester }
 }

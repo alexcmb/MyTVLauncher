@@ -139,6 +139,7 @@ class LauncherActivity : ComponentActivity() {
     private var tabOrder by mutableStateOf<List<String>>(emptyList())
     private var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
     private var startupTab by mutableStateOf(HomeTabs.HOME_KEY)
+    private var pinnedApps by mutableStateOf<List<String>>(emptyList())
     // Bumped on each HOME press; the home screen goes back to the startup tab when it changes.
     private var homeRequests by mutableStateOf(0)
 
@@ -161,6 +162,7 @@ class LauncherActivity : ComponentActivity() {
         tabOrder = settings.tabOrder()
         hiddenTabs = settings.hiddenTabs()
         startupTab = settings.startupTab() ?: HomeTabs.HOME_KEY
+        pinnedApps = settings.pinnedApps()
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -211,6 +213,7 @@ class LauncherActivity : ComponentActivity() {
                         focusTracker = focusTracker,
                         startupTab = startupTab,
                         homeRequests = homeRequests,
+                        pinnedApps = pinnedApps,
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
@@ -396,15 +399,34 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun showAppMenu(shortcut: Shortcut) = openMenu {
+        val pinned = shortcut.id in pinnedApps
+        val items = mutableListOf(
+            MenuItem(
+                getString(R.string.menu_change_category),
+                value = shortcut.category,
+                submenu = true,
+            ) { showCategoryMenu(shortcut) },
+            // A toggle with a fixed label, so the focus stays on it when the rows below
+            // appear or go away.
+            toggleItem(R.string.menu_pin, pinned) { pin ->
+                savePinnedApps(if (pin) pinnedApps + shortcut.id else pinnedApps - shortcut.id)
+            },
+        )
+        if (pinned) {
+            // Same moves as the tabs: the menu stays open to move again, and the value is the
+            // card's place in the favourites row.
+            items += MenuItem(
+                getString(R.string.tab_move_left),
+                value = "${pinnedApps.indexOf(shortcut.id) + 1} / ${pinnedApps.size}",
+            ) { savePinnedApps(HomeTabs.move(pinnedApps, shortcut.id, -1)) }
+            items += MenuItem(getString(R.string.tab_move_right)) {
+                savePinnedApps(HomeTabs.move(pinnedApps, shortcut.id, +1))
+            }
+        }
         MenuSpec(
             title = shortcut.title,
-            items = listOf(
-                MenuItem(
-                    getString(R.string.menu_change_category),
-                    value = shortcut.category,
-                    submenu = true,
-                ) { showCategoryMenu(shortcut) },
-                MenuItem(getString(R.string.menu_hide)) {
+            items = items + listOf(
+                MenuItem(getString(R.string.menu_hide), divider = true) {
                     closeMenus()
                     viewModel.hideApp(shortcut)
                 },
@@ -420,6 +442,11 @@ class LauncherActivity : ComponentActivity() {
                 },
             ),
         )
+    }
+
+    private fun savePinnedApps(ids: List<String>) {
+        settings.setPinnedApps(ids)
+        pinnedApps = ids
     }
 
     private fun showCategoryMenu(shortcut: Shortcut) = openMenu {
