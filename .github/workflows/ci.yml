@@ -1,7 +1,18 @@
 name: CI
 
-# Runs the unit tests and a debug build on every push and pull request.
-# Tag pushes are handled by release.yml instead.
+# Every push and pull request goes through four independent checks; any of them failing fails
+# the run. Tag pushes are handled by release.yml instead.
+#
+#   tests         unit tests + a debug build
+#   lint          Android Lint (correctness and security checks); errors block
+#   security      Gradle wrapper integrity, Semgrep static analysis, gitleaks secret scan
+#   dependencies  the libraries shipped in the release APK, checked by OSV-Scanner against
+#                 known vulnerabilities; on main, the dependency graph is also sent to GitHub
+#                 so Dependabot alerts cover it
+#
+# Third-party actions and images are pinned to a commit SHA / digest, never a movable tag:
+# a tag can be repointed by whoever controls the action (see the tj-actions and trivy-action
+# compromises). Dependabot (.github/dependabot.yml) proposes the bumps.
 on:
   push:
     branches: ['**']
@@ -10,22 +21,28 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  tests:
+    name: Unit tests & build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
       - name: Accept Android SDK licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Run unit tests
         run: |
@@ -35,9 +52,134 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload test report when tests fail
+      - name: Upload test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-report
           path: app/build/reports/tests/
+
+  lint:
+    name: Android Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # Errors fail the build; warnings (outdated libraries, unused resources…) are only
+      # reported, in the uploaded HTML report.
+      - name: Run Android Lint
+        run: |
+          chmod +x ./gradlew
+          ./gradlew lintDebug --no-daemon
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.*
+
+  security:
+    name: Code security
+    runs-on: ubuntu-latest
+    env:
+      SEMGREP_IMAGE: semgrep/semgrep:1.177.0@sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198
+      GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, so the secret scan can read the commits this branch adds.
+          fetch-depth: 0
+
+      # gradle-wrapper.jar runs on every build: make sure it's an official Gradle release.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # Static analysis: Kotlin/Java security rules, hard-coded secrets, and unsafe patterns in
+      # these very workflows. Any blocking finding fails the job.
+      - name: Semgrep
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "$SEMGREP_IMAGE" \
+            semgrep scan --error --metrics=off \
+              --config p/kotlin --config p/java --config p/secrets --config p/github-actions
+
+      # Secrets: the files as they are now, plus every commit this branch adds over main (a
+      # secret committed then deleted is still in the history).
+      - name: gitleaks — working tree
+        run: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" "$GITLEAKS_IMAGE" dir /repo --redact --verbose
+
+      - name: gitleaks — new commits
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git fetch --no-tags origin main
+          if [ -n "$(git rev-list origin/main..HEAD)" ]; then
+            docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
+              git /repo --redact --verbose --log-opts="origin/main..HEAD"
+          else
+            echo "No commits beyond main."
+          fi
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # Resolves the release runtime classpath (what ships in the APK, transitive libraries
+      # included) into app/gradle.lockfile — see the lockShipped block in app/build.gradle.kts.
+      - name: List shipped libraries
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath \
+            --write-locks -PlockShipped --no-daemon -q > /dev/null
+          echo "$(grep -c '=' app/gradle.lockfile) libraries"
+
+      - name: OSV-Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=app/gradle.lockfile
+
+  # Sends main's full dependency graph (build plugins too) to GitHub, which then raises
+  # Dependabot alerts when a new vulnerability is published for something already in use.
+  dependency-graph:
+    name: Dependency graph
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Submit dependency graph
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
