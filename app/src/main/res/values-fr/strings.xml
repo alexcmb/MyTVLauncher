@@ -100,4 +100,10 @@
     <string name="background_image_set">Définie</string>
     <string name="background_image_none">Aucune</string>
     <string name="action_hidden_apps_label">Apps masquées</string>
+    <string name="widget_menu_size">Taille</string>
+    <string name="widget_menu_align">Emplacement</string>
+    <string name="widget_menu_shape">Forme</string>
+    <string name="widget_menu_remove">Retirer ce widget</string>
+    <string name="widget_render_native_short">Natif</string>
+    <string name="widget_render_fit_short">Ajusté</string>
 </resources>

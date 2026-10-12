@@ -101,4 +101,10 @@
     <string name="background_image_set">Set</string>
     <string name="background_image_none">None</string>
     <string name="action_hidden_apps_label">Hidden apps</string>
+    <string name="widget_menu_size">Size</string>
+    <string name="widget_menu_align">Placement</string>
+    <string name="widget_menu_shape">Shape</string>
+    <string name="widget_menu_remove">Remove this widget</string>
+    <string name="widget_render_native_short">Native</string>
+    <string name="widget_render_fit_short">Fitted</string>
 </resources>
