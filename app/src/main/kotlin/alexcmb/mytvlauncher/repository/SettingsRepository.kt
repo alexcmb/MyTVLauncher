@@ -53,6 +53,9 @@ enum class WallpaperFit {
     SPAN,
 }
 
+/** How the apps of a category grid are ordered. */
+enum class AppSort { USAGE, ALPHABETICAL, MANUAL }
+
 /** User appearance preferences. */
 class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
@@ -77,6 +80,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_TABS_HIDDEN = "tabs_hidden"
         private const val KEY_STARTUP_TAB = "startup_tab"
         private const val KEY_PINNED_APPS = "pinned_apps"
+        private const val KEY_APP_SORT = "app_sort"
+        private const val KEY_APP_ORDER = "app_order"
         // List separator. Category names are free text; a newline is the one thing they can't
         // contain (and package names never do).
         private const val TAB_SEPARATOR = "\n"
@@ -196,6 +201,26 @@ class SettingsRepository private constructor(context: Context) {
         sharedPreferences.edit().apply {
             if (ids.isEmpty()) remove(KEY_PINNED_APPS)
             else putString(KEY_PINNED_APPS, ids.joinToString(TAB_SEPARATOR))
+        }.apply()
+
+    fun appSort(): AppSort =
+        sharedPreferences.getString(KEY_APP_SORT, null)
+            ?.let { runCatching { AppSort.valueOf(it) }.getOrNull() }
+            ?: AppSort.USAGE
+
+    fun setAppSort(sort: AppSort) =
+        sharedPreferences.edit().putString(KEY_APP_SORT, sort.name).apply()
+
+    /** The manual order of the apps (package names), used by [AppSort.MANUAL]. */
+    fun appOrder(): List<String> =
+        sharedPreferences.getString(KEY_APP_ORDER, null)
+            ?.split(TAB_SEPARATOR)?.filter { it.isNotEmpty() }
+            ?: emptyList()
+
+    fun setAppOrder(ids: List<String>) =
+        sharedPreferences.edit().apply {
+            if (ids.isEmpty()) remove(KEY_APP_ORDER)
+            else putString(KEY_APP_ORDER, ids.joinToString(TAB_SEPARATOR))
         }.apply()
 
     /** The key of the tab the home screen opens on (and returns to on HOME); null = the hub. */
