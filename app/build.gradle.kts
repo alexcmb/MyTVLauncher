@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    kotlin("android")
+    // Must track the Kotlin version: since Kotlin 2.0 the Compose compiler ships with it.
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -15,10 +15,10 @@ val signingKeyPass: String? = System.getenv("SIGNING_KEY_PASSWORD")
 
 android {
     namespace = "alexcmb.mytvlauncher"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "alexcmb.mytvlauncher"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 35
         // Overridable from CI so each tag produces an increasing version
         // (e.g. -PappVersionName=2026.7.14 -PappVersionCode=20260714).
@@ -60,9 +60,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     testOptions {
         // The pure logic under test never calls into the framework; this keeps any
         // incidental android.jar reference from throwing "not mocked".
@@ -71,21 +68,20 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
-    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Extracts the accent colour from a focused app's banner (the "auto" accent).
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Compose for TV — the whole UI.
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("androidx.activity:activity-compose")
-    implementation("androidx.tv:tv-material:1.0.0")
+    implementation("androidx.tv:tv-material:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }
@@ -96,5 +92,11 @@ dependencies {
 if (providers.gradleProperty("lockShipped").isPresent) {
     configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
         resolutionStrategy.activateDependencyLocking()
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
