@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    kotlin("android")
+    // Must track the Kotlin version: since Kotlin 2.0 the Compose compiler ships with it.
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -15,10 +15,10 @@ val signingKeyPass: String? = System.getenv("SIGNING_KEY_PASSWORD")
 
 android {
     namespace = "alexcmb.mytvlauncher"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "alexcmb.mytvlauncher"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 35
         // Overridable from CI so each tag produces an increasing version
         // (e.g. -PappVersionName=2026.7.14 -PappVersionCode=20260714).
@@ -60,9 +60,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     testOptions {
         // The pure logic under test never calls into the framework; this keeps any
         // incidental android.jar reference from throwing "not mocked".
@@ -95,5 +92,11 @@ dependencies {
 if (providers.gradleProperty("lockShipped").isPresent) {
     configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
         resolutionStrategy.activateDependencyLocking()
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
