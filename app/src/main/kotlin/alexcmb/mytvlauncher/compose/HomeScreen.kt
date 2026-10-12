@@ -170,6 +170,7 @@ fun HomeScreen(
     nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onGridLongPress: (Shortcut) -> Unit,
     onWidgetLongPress: (Int) -> Unit,
     onOpenSource: (TvSource) -> Unit,
     onPlayPause: () -> Unit,
@@ -303,7 +304,7 @@ fun HomeScreen(
                     )
                     tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
                     tab is AppsTab -> AppsGrid(
-                        tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress,
+                        tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onGridLongPress,
                         state = gridStates.getOrPut(tab.title) { LazyGridState() },
                         memory = listMemory.getOrPut(tab.title) { FocusMemory() },
                     ) { focused = it }
@@ -420,7 +421,8 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Bool
         if (focused != null) {
             Text(focused.title, color = Color.White, fontSize = 22.sp)
             if (showUsageCount) {
-                val rank = inTab.indexOf(focused) + 1
+                // The usage rank, whatever order the grid is sorted in.
+                val rank = inTab.sortedByDescending { it.openCount }.indexOf(focused) + 1
                 val opens = focused.openCount
                 Text(
                     text = when {

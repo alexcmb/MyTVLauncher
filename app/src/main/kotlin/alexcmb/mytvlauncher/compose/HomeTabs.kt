@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.model.ShortcutGroup
+import alexcmb.mytvlauncher.repository.AppSort
 import alexcmb.mytvlauncher.source.TvSource
 
 /** A tab of the home screen. [key] identifies it in the settings (order, hidden, startup). */
@@ -35,7 +36,8 @@ object HomeTabs {
      * press away; it is always there and always first. By default a Sources tab follows when
      * the TV has inputs, then a tab per category in the order the groups arrive. [order] (tab
      * keys) rearranges the tabs after the hub — tabs it doesn't name, like a new category, keep
-     * their default place after the ordered ones — and [hidden] removes tabs.
+     * their default place after the ordered ones — and [hidden] removes tabs. Each category's
+     * apps are laid out by [sort] (see [AppOrder]); the hub always stays by usage.
      */
     fun from(
         groups: List<ShortcutGroup>,
@@ -44,12 +46,14 @@ object HomeTabs {
         sourcesLabel: String = "",
         order: List<String> = emptyList(),
         hidden: Set<String> = emptySet(),
+        sort: AppSort = AppSort.USAGE,
+        manualOrder: List<String> = emptyList(),
     ): List<HomeTab> {
         val all = groups.flatMap { it.shortcutList }
         if (all.isEmpty()) return emptyList()
         val rest = buildList {
             if (sources.isNotEmpty()) add(SourcesTab(sourcesLabel, sources))
-            groups.forEach { add(AppsTab(it.category, it.shortcutList)) }
+            groups.forEach { add(AppsTab(it.category, AppOrder.sort(it.shortcutList, sort, manualOrder))) }
         }
         val ranked = rest.withIndex().sortedBy { (index, tab) ->
             order.indexOf(tab.key).takeIf { it >= 0 } ?: (order.size + index)

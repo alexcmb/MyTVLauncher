@@ -17,6 +17,10 @@
     <string name="action_widgets">Widgets</string>
     <string name="action_tabs">Onglets</string>
     <string name="tabs_startup">Onglet au démarrage</string>
+    <string name="app_sort">Tri des apps</string>
+    <string name="app_sort_usage">Par usage</string>
+    <string name="app_sort_alpha">Alphabétique</string>
+    <string name="app_sort_manual">Manuel</string>
     <string name="tabs_reset">Rétablir les onglets par défaut</string>
     <string name="tab_hidden">Masqué</string>
     <string name="tab_show">Afficher l\'onglet</string>

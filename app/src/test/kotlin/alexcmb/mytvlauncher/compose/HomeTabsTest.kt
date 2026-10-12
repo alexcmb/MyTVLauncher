@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.model.ShortcutGroup
+import alexcmb.mytvlauncher.repository.AppSort
 import alexcmb.mytvlauncher.source.TvSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -120,6 +121,17 @@ class HomeTabsTest {
         assertEquals(keys, HomeTabs.move(keys, "a", -1))
         assertEquals(keys, HomeTabs.move(keys, "c", +1))
         assertEquals(keys, HomeTabs.move(keys, "zzz", +1))
+    }
+
+    @Test
+    fun `the sort applies to category tabs but the hub stays by usage`() {
+        val tabs = HomeTabs.from(
+            listOf(group("Games", shortcut("zelda", 9), shortcut("astro", 1))),
+            "All",
+            sort = AppSort.ALPHABETICAL,
+        )
+        assertEquals(listOf("zelda", "astro"), tabs[0].ids())
+        assertEquals(listOf("astro", "zelda"), tabs[1].ids())
     }
 
     @Test

@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher
 
 import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
+import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
 import alexcmb.mytvlauncher.compose.MenuItem
@@ -20,6 +21,7 @@ import alexcmb.mytvlauncher.model.Shortcut
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.source.TvSourceController
 import alexcmb.mytvlauncher.repository.AccentColor
+import alexcmb.mytvlauncher.repository.AppSort
 import alexcmb.mytvlauncher.repository.BackgroundStyle
 import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
@@ -142,6 +144,8 @@ class LauncherActivity : ComponentActivity() {
     private var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
     private var startupTab by mutableStateOf(HomeTabs.HOME_KEY)
     private var pinnedApps by mutableStateOf<List<String>>(emptyList())
+    private var appSort by mutableStateOf(AppSort.USAGE)
+    private var appOrder by mutableStateOf<List<String>>(emptyList())
     // Bumped on each HOME press; the home screen goes back to the startup tab when it changes.
     private var homeRequests by mutableStateOf(0)
 
@@ -165,6 +169,8 @@ class LauncherActivity : ComponentActivity() {
         hiddenTabs = settings.hiddenTabs()
         startupTab = settings.startupTab() ?: HomeTabs.HOME_KEY
         pinnedApps = settings.pinnedApps()
+        appSort = settings.appSort()
+        appOrder = settings.appOrder()
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -188,7 +194,7 @@ class LauncherActivity : ComponentActivity() {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(
                 groups, stringResource(R.string.title_home), sources, stringResource(R.string.title_sources),
-                tabOrder, hiddenTabs,
+                tabOrder, hiddenTabs, appSort, appOrder,
             )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
                 Box {
@@ -206,7 +212,8 @@ class LauncherActivity : ComponentActivity() {
                         showAppLabels = showAppLabels,
                         nowPlaying = nowPlaying,
                         onLaunch = ::launchShortcut,
-                        onLongPress = ::showAppMenu,
+                        onLongPress = { showAppMenu(it, inGrid = false) },
+                        onGridLongPress = { showAppMenu(it, inGrid = true) },
                         onWidgetLongPress = ::showWidgetMenu,
                         onOpenSource = sourceController::open,
                         onPlayPause = nowPlayingController::playPause,
@@ -404,7 +411,12 @@ class LauncherActivity : ComponentActivity() {
         resizing = ResizeSession(id, widgetSlot.scaleOf(id), label)
     }
 
-    private fun showAppMenu(shortcut: Shortcut) = openMenu {
+    /**
+     * An app's menu. [inGrid]: opened from a category grid rather than the hub's favourites
+     * row — it decides which moves the menu offers: the favourites order on the hub, the
+     * grid's manual order in a grid.
+     */
+    private fun showAppMenu(shortcut: Shortcut, inGrid: Boolean) = openMenu {
         val pinned = shortcut.id in pinnedApps
         val items = mutableListOf(
             MenuItem(
@@ -418,7 +430,7 @@ class LauncherActivity : ComponentActivity() {
                 savePinnedApps(if (pin) pinnedApps + shortcut.id else pinnedApps - shortcut.id)
             },
         )
-        if (pinned) {
+        if (pinned && !inGrid) {
             // Same moves as the tabs: the menu stays open to move again, and the value is the
             // card's place in the favourites row.
             items += MenuItem(
@@ -429,6 +441,7 @@ class LauncherActivity : ComponentActivity() {
                 savePinnedApps(HomeTabs.move(pinnedApps, shortcut.id, +1))
             }
         }
+        if (inGrid && appSort == AppSort.MANUAL) items += gridMoveItems(shortcut)
         MenuSpec(
             title = shortcut.title,
             items = items + listOf(
@@ -447,6 +460,43 @@ class LauncherActivity : ComponentActivity() {
                     )
                 },
             ),
+        )
+    }
+
+    /** Left/right within the app's category grid, in manual order; the menu stays open. */
+    private fun gridMoveItems(shortcut: Shortcut): List<MenuItem> {
+        val group = viewModel.browseContent.value.orEmpty()
+            .firstOrNull { it.category == shortcut.category } ?: return emptyList()
+        val shown = AppOrder.sort(group.shortcutList, AppSort.MANUAL, appOrder).map { it.id }
+        fun move(delta: Int) {
+            appOrder = AppOrder.move(appOrder, shown, shortcut.id, delta).also(settings::setAppOrder)
+        }
+        return listOf(
+            MenuItem(
+                getString(R.string.tab_move_left),
+                value = "${shown.indexOf(shortcut.id) + 1} / ${shown.size}",
+            ) { move(-1) },
+            MenuItem(getString(R.string.tab_move_right)) { move(+1) },
+        )
+    }
+
+    private fun appSortName(sort: AppSort): String = getString(
+        when (sort) {
+            AppSort.USAGE -> R.string.app_sort_usage
+            AppSort.ALPHABETICAL -> R.string.app_sort_alpha
+            AppSort.MANUAL -> R.string.app_sort_manual
+        }
+    )
+
+    private fun showAppSortMenu() = openMenu {
+        MenuSpec(
+            title = getString(R.string.app_sort),
+            items = AppSort.entries.map { sort ->
+                MenuItem(appSortName(sort), selected = sort == appSort) {
+                    settings.setAppSort(sort)
+                    appSort = sort
+                }
+            },
         )
     }
 
@@ -533,6 +583,9 @@ class LauncherActivity : ComponentActivity() {
         val items = mutableListOf(
             MenuItem(getString(R.string.tabs_startup), value = tabTitle(startupTab), submenu = true) {
                 showStartupTabMenu()
+            },
+            MenuItem(getString(R.string.app_sort), value = appSortName(appSort), submenu = true) {
+                showAppSortMenu()
             },
         )
         tabs.forEachIndexed { index, tab ->
