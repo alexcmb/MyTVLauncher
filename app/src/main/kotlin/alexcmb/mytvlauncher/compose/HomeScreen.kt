@@ -10,6 +10,7 @@ import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -1106,11 +1107,15 @@ private fun greetingRes(now: Date): Int {
  * moving between apps glides rather than snaps. Falls back to [fallback] — the fixed base
  * accent — while nothing is focused or a banner yields no usable colour.
  */
+// The producer does assign `value` (last line); the lint check still reports it — a false
+// positive — so it's silenced for this function only, not for the whole project.
+@SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
 private fun rememberAutoAccent(focused: Shortcut?, fallback: Color): Color {
     val target by produceState(fallback, focused, fallback) {
         val art = focused?.banner ?: focused?.icon
-        value = art?.let { paletteAccent(it) } ?: fallback
+        val colour = if (art != null) paletteAccent(art) else null
+        value = colour ?: fallback
     }
     val accent by animateColorAsState(target, tween(durationMillis = 300), label = "accent")
     return accent

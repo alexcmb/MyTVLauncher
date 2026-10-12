@@ -89,3 +89,12 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+// Dependency audit (CI): `-PlockShipped` with `--write-locks` writes app/gradle.lockfile listing
+// every library that ships in the release APK, transitive ones included, for OSV-Scanner to
+// check against known vulnerabilities. Off by default, so no lockfile has to be kept in sync.
+if (providers.gradleProperty("lockShipped").isPresent) {
+    configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}

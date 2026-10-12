@@ -23,3 +23,6 @@ keystore.properties
 # Encoded signing material — never commit
 *.b64
 release.jks*
+
+# Written by CI's dependency audit (-PlockShipped --write-locks), never kept
+/app/gradle.lockfile
