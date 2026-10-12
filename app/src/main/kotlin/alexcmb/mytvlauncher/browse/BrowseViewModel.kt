@@ -93,6 +93,36 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Every app the launcher knows, hidden ones included (they keep a category too). */
+    private fun allShortcuts(): List<Shortcut> =
+        browseContent.value.orEmpty().flatMap { it.shortcutList } + hiddenApps
+
+    /** How many apps, hidden ones included, are filed under [category]. */
+    fun appCount(category: String): Int = allShortcuts().count { it.category == category }
+
+    /** Moves every app of [from] to [to]; onto an existing category, the two merge. */
+    fun renameCategory(from: String, to: String) {
+        val moved = allShortcuts().filter { it.category == from }
+        // Applied in memory at once, so the tabs (and the menu listing them) show the new name
+        // in the same frame; the reload after saving then just confirms it.
+        moved.forEach { it.category = to }
+        browseContent.value = groupAndSort(browseContent.value.orEmpty().flatMap { it.shortcutList })
+        val ids = moved.map { it.id }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { ids.forEach { shortcutRepository.updateCategory(it, to) } }
+            loadShortcutGroupList()
+        }
+    }
+
+    /** Dissolves [category]: its apps go back to their default category. */
+    fun deleteCategory(category: String) {
+        val ids = allShortcuts().filter { it.category == category }.map { it.id }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { ids.forEach { shortcutRepository.resetCategory(it) } }
+            loadShortcutGroupList()
+        }
+    }
+
     fun findPosition(shortcut: Shortcut): Pair<Int, Int> {
         val shortcutGroupList = browseContent.value!!
         val x = shortcutGroupList.indexOfFirst { it.category == shortcut.category }

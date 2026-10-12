@@ -74,10 +74,12 @@ private val Muted = Color(0xFF9AA0B4)
 fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
     val requesters = remember(spec.items.size) { List(spec.items.size) { FocusRequester() } }
-    // Keyed on the title (a new level) and the row count (a level that grew or shrank), not on
-    // the spec itself: a level that merely refreshes — a check moving, a value changing — must
-    // keep the focus where the user is.
-    LaunchedEffect(spec.title, spec.items.size) {
+    // Keyed on the title (a new level) and the rows' labels (rows added, removed, moved or
+    // renamed — e.g. a category renamed while its list reloads), not on the spec itself: a
+    // level that merely refreshes — a check moving, a value changing — must keep the focus
+    // where the user is. The focus is re-placed by label, so it follows the remembered row.
+    val labels = spec.items.map { it.label }
+    LaunchedEffect(spec.title, labels) {
         if (requesters.isEmpty()) return@LaunchedEffect
         val target = focusMemory[spec.title]
             ?.let { label -> spec.items.indexOfFirst { it.label == label }.takeIf { it >= 0 } }
