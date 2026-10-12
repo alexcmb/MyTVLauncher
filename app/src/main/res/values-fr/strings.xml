@@ -101,6 +101,7 @@
     <string name="update_install">Installer</string>
     <string name="update_downloading">Téléchargement…</string>
     <string name="update_download_failed">Échec du téléchargement</string>
+    <string name="update_rejected">Mise à jour refusée : l\'APK ne correspond pas à cette application</string>
     <string name="accent_auto_short">Auto</string>
     <string name="background_style">Style</string>
     <string name="background_wallpaper">Image</string>

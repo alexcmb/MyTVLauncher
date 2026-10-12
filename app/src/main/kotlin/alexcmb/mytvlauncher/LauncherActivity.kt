@@ -25,6 +25,7 @@ import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.update.UpdateManager
+import alexcmb.mytvlauncher.update.UpdateVerdict
 import alexcmb.mytvlauncher.widget.MAX_SCALE_PERCENT
 import alexcmb.mytvlauncher.widget.MIN_SCALE_PERCENT
 import alexcmb.mytvlauncher.widget.WidgetAlignment
@@ -922,7 +923,7 @@ class LauncherActivity : ComponentActivity() {
             MenuSpec(
                 title = getString(R.string.widget_add),
                 items = providers.map { provider ->
-                    MenuItem(provider.loadLabel(packageManager).toString()) {
+                    MenuItem(provider.loadLabel(packageManager)) {
                         closeMenus()
                         widgetSlot.add(provider)
                     }
@@ -1027,7 +1028,19 @@ class LauncherActivity : ComponentActivity() {
                 Log.w(TAG, "Update download failed", e)
                 null
             }
-            if (file == null) toast(R.string.update_download_failed) else updateManager.install(file)
+            if (file == null) {
+                toast(R.string.update_download_failed)
+                return@launch
+            }
+            // Parsing the APK reads the whole file: off the main thread.
+            val verdict = withContext(Dispatchers.IO) { updateManager.verify(file) }
+            if (verdict == UpdateVerdict.OK) {
+                updateManager.install(file)
+            } else {
+                Log.w(TAG, "Update rejected: $verdict")
+                file.delete()
+                toast(R.string.update_rejected)
+            }
         }
     }
 
