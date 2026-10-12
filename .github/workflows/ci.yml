@@ -17,6 +17,8 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # "Run workflow" in the Actions tab, to re-check a branch without a new commit.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -167,7 +169,7 @@ jobs:
   # Dependabot alerts when a new vulnerability is published for something already in use.
   dependency-graph:
     name: Dependency graph
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
