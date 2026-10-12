@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
@@ -8,8 +10,10 @@ import alexcmb.mytvlauncher.repository.CardSize
 import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
+import android.annotation.SuppressLint
 import android.graphics.drawable.Drawable
 import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -36,8 +40,10 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -45,19 +51,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -139,7 +153,7 @@ data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: B
 /** The derived clock values shown on the left of the title bar. */
 private data class ClockValues(val time: String, val date: String?, val greeting: String?)
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun HomeScreen(
     tabs: List<HomeTab>,
@@ -156,24 +170,60 @@ fun HomeScreen(
     nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onWidgetLongPress: (Int) -> Unit,
     onOpenSource: (TvSource) -> Unit,
     onPlayPause: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     onSettings: () -> Unit,
+    focusTracker: FocusTracker,
+    startupTab: String,
+    homeRequests: Int,
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
+    // The selection is held by key, not position, so a tab moved, hidden or added in front
+    // doesn't silently switch to another one. A key that's gone (hidden) falls back to the hub.
+    var selectedKey by remember { mutableStateOf(startupTab) }
+    val selectedTab = tabs.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
     // DPAD-up from the content lands back on the selected tab. The tabs are centred, so
     // spatial focus search would drift to the settings orb instead — this wires it directly.
     val tabsFocus = remember { FocusRequester() }
+    // The Home chip, so Back from another tab's chips can return to it.
+    val homeTabFocus = remember { FocusRequester() }
+    var topBarFocused by remember { mutableStateOf(false) }
+
+    // HOME pressed while the launcher is up (or to come back to it): the startup tab, with the
+    // focus on its chip — the card that had it may belong to a tab that's no longer shown.
+    LaunchedEffect(homeRequests) {
+        if (homeRequests == 0) return@LaunchedEffect
+        selectedKey = startupTab
+        focused = null
+        withFrameNanos { } // let the chip for the new selection take tabsFocus
+        runCatching { tabsFocus.requestFocus() }
+    }
+
+    // Back walks up the screen: content -> the tabs -> the Home tab. On Home's tabs there's
+    // nowhere left to go (a launcher must not exit). Menus and sliders register their own
+    // handler later, so they still take Back first while they're open.
+    BackHandler {
+        when {
+            !topBarFocused -> runCatching { tabsFocus.requestFocus() }
+            selectedTab != 0 -> runCatching { homeTabFocus.requestFocus() }
+        }
+    }
+
+    // Focus memory. Each list remembers its last focused card above the list itself, so it
+    // survives the tab switch that disposes the list; scroll positions are kept the same way.
+    val listMemory = remember { mutableMapOf<String, FocusMemory>() }
+    val gridStates = remember { mutableMapOf<String, LazyGridState>() }
+    val favouritesState = remember { LazyListState() }
 
     // The accent normally comes from the activity's fixed choice. In "auto" mode it tracks
     // the focused app's banner; re-provided here since only this screen knows the focus.
     val base = LocalAccent.current
     val accent = if (accentAuto) rememberAutoAccent(focused, base) else base
 
-    CompositionLocalProvider(LocalAccent provides accent) {
+    CompositionLocalProvider(LocalAccent provides accent, LocalFocusTracker provides focusTracker) {
     MaterialTheme {
         // One intensity slider drives every mode: it deepens the SOLID tint, strengthens the
         // gradient wash, and brightens the wallpaper (less dim). A dark base always carries the
@@ -188,7 +238,7 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize().background(base)) {
             // Background decoration, behind the content.
             when (background) {
-                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused)
+                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused, intensity)
                 BackgroundStyle.ACCENT_GRADIENT -> Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
@@ -216,7 +266,10 @@ fun HomeScreen(
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
             }
             Column(Modifier.fillMaxSize()) {
-                TopBar(tabs, selectedTab, clock, tabsFocus, onSettings) { selectedTab = it; focused = null }
+                TopBar(
+                    tabs, selectedTab, clock, tabsFocus, homeTabFocus, onSettings,
+                    Modifier.onFocusChanged { topBarFocused = it.hasFocus },
+                ) { selectedKey = tabs[it].key; focused = null }
                 // The hero band reserves room for a focused app's name. On the hub its top rows
                 // (now-playing, widgets) focus no app, so collapse it there to hand that space to
                 // the content — otherwise a now-playing card plus this empty band push the
@@ -238,13 +291,20 @@ fun HomeScreen(
                         nowPlaying = nowPlaying,
                         onLaunch = onLaunch,
                         onLongPress = onLongPress,
+                        onWidgetLongPress = onWidgetLongPress,
                         onPlayPause = onPlayPause,
                         onOpenNowPlaying = onOpenNowPlaying,
                         onFocus = { focused = it },
                         onWidgetsFocused = { focused = null },
+                        favouritesState = favouritesState,
+                        favouritesMemory = listMemory.getOrPut(tab.title) { FocusMemory() },
                     )
                     tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
-                    tab is AppsTab -> AppsGrid(tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress) { focused = it }
+                    tab is AppsTab -> AppsGrid(
+                        tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onLongPress,
+                        state = gridStates.getOrPut(tab.title) { LazyGridState() },
+                        memory = listMemory.getOrPut(tab.title) { FocusMemory() },
+                    ) { focused = it }
                 }
             }
         }
@@ -259,15 +319,17 @@ private fun TopBar(
     selected: Int,
     clock: ClockOptions,
     tabsFocus: FocusRequester,
+    homeTabFocus: FocusRequester,
     onSettings: () -> Unit,
+    modifier: Modifier,
     onSelect: (Int) -> Unit,
 ) {
     // Each part is anchored on its own: settings hard left, clock hard right, tabs on the
     // true screen centre. Laying these out in a row with weighted spacers instead centres
     // the tabs *between* the orb and the clock, and since those two aren't the same width
     // the tabs end up off-centre by half the difference.
-    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp)) {
-        SettingsOrb(onSettings, Modifier.align(Alignment.CenterStart))
+    Box(modifier = modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp)) {
+        SettingsOrb(onSettings, Modifier.align(Alignment.CenterStart).trackFocus())
         // A hand-rolled row rather than tv-material's TabRow: its sliding indicator
         // animation hitched on the tab change.
         if (tabs.isNotEmpty()) {
@@ -277,8 +339,11 @@ private fun TopBar(
             ) {
                 tabs.forEachIndexed { index, tab ->
                     // The selected chip is the up-target from the content below.
-                    val chipModifier =
-                        if (index == selected) Modifier.focusRequester(tabsFocus) else Modifier
+                    // The Home chip also answers to homeTabFocus (Back from another tab).
+                    val chipModifier = Modifier
+                        .then(if (index == selected) Modifier.focusRequester(tabsFocus) else Modifier)
+                        .then(if (index == 0) Modifier.focusRequester(homeTabFocus) else Modifier)
+                        .trackFocus()
                     TabChip(tab.title, selected = index == selected, modifier = chipModifier) {
                         onSelect(index)
                     }
@@ -380,10 +445,13 @@ private fun Hub(
     nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    onWidgetLongPress: (Int) -> Unit,
     onPlayPause: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     onFocus: (Shortcut) -> Unit,
     onWidgetsFocused: () -> Unit,
+    favouritesState: LazyListState,
+    favouritesMemory: FocusMemory,
 ) {
     // As focus moves down to the apps, the widgets slide up and fade and the app cards
     // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
@@ -492,9 +560,9 @@ private fun Hub(
                 // at screen centre and START/END sit centred on their sides. Widgets render at
                 // their real chosen size — pick a size that fits if the band gets crowded.
                 val onFocused = { id: Int -> focusedWidget = id }
-                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
-                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
-                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, Modifier.weight(1f))
+                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
+                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
+                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
             }
         }
         if (favourites.isNotEmpty()) {
@@ -518,11 +586,17 @@ private fun Hub(
                 // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
                 // or the row clips the top/bottom edges and the card loses its rounded corners.
                 LazyRow(
+                    state = favouritesState,
                     contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.rememberFocus(favouritesMemory),
                 ) {
                     items(favourites, key = { it.id }) { shortcut ->
-                        AppCard(shortcut, showAppLabels, onLaunch, onLongPress, onFocus, Modifier.width(cardWidth))
+                        AppCard(
+                            shortcut, showAppLabels, onLaunch, onLongPress,
+                            { favouritesMemory.lastId = it.id; onFocus(it) },
+                            Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(),
+                        )
                     }
                 }
             }
@@ -542,6 +616,7 @@ private fun WidgetSlot(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
+    onLongPress: (Int) -> Unit,
     modifier: Modifier,
 ) {
     val alignment = tiles.firstOrNull()?.alignment
@@ -561,7 +636,7 @@ private fun WidgetSlot(
         }
     ) {
         if (tiles.isNotEmpty()) {
-            WidgetZone(tiles, spotlight, focusedWidget, onFocused)
+            WidgetZone(tiles, spotlight, focusedWidget, onFocused, onLongPress)
         }
     }
 }
@@ -573,6 +648,7 @@ private fun WidgetZone(
     spotlight: Float,
     focusedWidget: Int?,
     onFocused: (Int) -> Unit,
+    onLongPress: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -584,10 +660,43 @@ private fun WidgetZone(
                 // Spotlight: the focused widget stays lit, the others dim.
                 val lit = focusedWidget == tile.id
                 val tileAlpha = if (lit) 1f else 1f - 0.7f * spotlight
+                // Long press: OK held down. The focus sits inside the widget's own views, so
+                // watch the previewed key events here. The first press goes through untouched
+                // (a short OK still clicks the widget's button); once the key auto-repeats it's
+                // a long press — open this widget's menu and swallow the rest of the press,
+                // including its release, so the widget never sees a click.
+                var held by remember { mutableStateOf(false) }
+                val tracker = LocalFocusTracker.current
+                val viewFocus = remember { FocusRequester() }
                 Box(
                     modifier = Modifier
                         .size(tile.widthDp.dp, tile.heightDp.dp)
-                        .onFocusChanged { if (it.hasFocus) onFocused(tile.id) }
+                        .onFocusChanged {
+                            if (it.hasFocus) {
+                                onFocused(tile.id)
+                                tracker?.last = viewFocus
+                            }
+                        }
+                        .onPreviewKeyEvent { event ->
+                            val ok = event.key == Key.DirectionCenter || event.key == Key.Enter ||
+                                event.key == Key.NumPadEnter
+                            when {
+                                !ok -> false
+                                event.type == KeyEventType.KeyDown &&
+                                    event.nativeKeyEvent.repeatCount > 0 -> {
+                                    if (!held) {
+                                        held = true
+                                        onLongPress(tile.id)
+                                    }
+                                    true
+                                }
+                                event.type == KeyEventType.KeyUp && held -> {
+                                    held = false
+                                    true
+                                }
+                                else -> false
+                            }
+                        }
                         .graphicsLayer { alpha = tileAlpha }
                         // Clip: some widgets draw past the size they're handed.
                         .clipToBounds(),
@@ -603,6 +712,7 @@ private fun WidgetZone(
                         factory = { tile.createView() },
                         update = { tile.applySize(it) },
                         modifier = Modifier
+                            .focusRequester(viewFocus)
                             .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
                             .graphicsLayer { scaleX = sx; scaleY = sy },
                     )
@@ -620,10 +730,13 @@ private fun AppsGrid(
     showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
+    state: LazyGridState,
+    memory: FocusMemory,
     onFocus: (Shortcut) -> Unit,
 ) {
     var focusedIndex by remember { mutableStateOf(-1) }
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Fixed(cardSize.columns),
         // Top padding so the top row can scale up on focus without its border being clipped.
         contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
@@ -632,7 +745,7 @@ private fun AppsGrid(
         // DPAD-up from the top row goes to the tabs, not the settings orb; deeper rows keep
         // their natural up navigation within the grid.
         modifier = Modifier
-            .focusGroup()
+            .rememberFocus(memory)
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
                     focusedIndex in 0 until cardSize.columns
@@ -645,7 +758,11 @@ private fun AppsGrid(
             },
     ) {
         itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
-            AppCard(shortcut, showAppLabels, onLaunch, onLongPress, { focusedIndex = index; onFocus(it) }, Modifier)
+            AppCard(
+                shortcut, showAppLabels, onLaunch, onLongPress,
+                { focusedIndex = index; memory.lastId = it.id; onFocus(it) },
+                Modifier.focusTarget(memory, shortcut.id).trackFocus(),
+            )
         }
     }
 }
@@ -698,6 +815,7 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
         ),
         modifier = Modifier
+            .trackFocus()
             .aspectRatio(16f / 9f)
             .onFocusChanged { if (it.isFocused) onFocus() },
     ) {
@@ -766,6 +884,7 @@ private fun NowPlayingCard(
         ),
         modifier = modifier
             .focusRequester(focusRequester)
+            .trackFocus()
             .onFocusChanged { onFocusChanged(it.isFocused) },
     ) {
         Row(
@@ -837,21 +956,50 @@ private fun NowPlayingCard(
     }
 }
 
-/** The focused app's banner, dimmed behind the screen. No blur: RenderEffect is API 31+. */
+/**
+ * The focused app's banner as hero art in the top-right corner, fading into the background
+ * towards the left (so the hero title over there stays clean) and towards the bottom (no hard
+ * edge). Drawn smaller than full-screen so a low-resolution banner doesn't blow up into a blur.
+ * [intensity] (the background-brightness setting) sets how strongly it shows. No blur:
+ * RenderEffect is API 31+.
+ */
 @Composable
-private fun AmbientBackdrop(focused: Shortcut?) {
+private fun AmbientBackdrop(focused: Shortcut?, intensity: Float) {
     Crossfade(targetState = focused?.banner, label = "backdrop") { banner ->
         if (banner != null) {
             val bitmap = remember(banner) { banner.toBitmap().asImageBitmap() }
             Box(Modifier.fillMaxSize()) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alpha = 0.30f,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.55f),
-                )
-                Box(Modifier.fillMaxSize().background(Background.copy(alpha = 0.55f)))
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .fillMaxWidth(0.62f)
+                        .fillMaxHeight(0.62f),
+                ) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        alpha = lerpF(0.25f, 0.8f, intensity),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // Fade the art out into the plain background on its left and bottom edges.
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.horizontalGradient(
+                                0f to Background,
+                                0.45f to Background.copy(alpha = 0f),
+                            )
+                        )
+                    )
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                0.35f to Background.copy(alpha = 0f),
+                                1f to Background,
+                            )
+                        )
+                    )
+                }
             }
         }
     }
@@ -959,11 +1107,15 @@ private fun greetingRes(now: Date): Int {
  * moving between apps glides rather than snaps. Falls back to [fallback] — the fixed base
  * accent — while nothing is focused or a banner yields no usable colour.
  */
+// The producer does assign `value` (last line); the lint check still reports it — a false
+// positive — so it's silenced for this function only, not for the whole project.
+@SuppressLint("ProduceStateDoesNotAssignValue")
 @Composable
 private fun rememberAutoAccent(focused: Shortcut?, fallback: Color): Color {
     val target by produceState(fallback, focused, fallback) {
         val art = focused?.banner ?: focused?.icon
-        value = art?.let { paletteAccent(it) } ?: fallback
+        val colour = if (art != null) paletteAccent(art) else null
+        value = colour ?: fallback
     }
     val accent by animateColorAsState(target, tween(durationMillis = 300), label = "accent")
     return accent
@@ -992,4 +1144,71 @@ private fun DrawableImage(drawable: Drawable, modifier: Modifier, scale: Content
         contentScale = scale,
         modifier = modifier,
     )
+}
+
+/**
+ * The card a list last had the focus on, kept above the list so it outlives it (a tab switch
+ * disposes the list). [lastId] is state, but each card only watches whether it is the one
+ * (derivedStateOf), so a focus move recomposes two cards, not the whole list.
+ */
+private class FocusMemory {
+    var lastId by mutableStateOf<String?>(null)
+    val requester = FocusRequester()
+    var attached = false
+}
+
+/**
+ * Focus entering this list with the DPAD (from the tabs, or from the row above) goes back to
+ * its last focused card instead of the spatially nearest one. A programmatic request for a
+ * particular card (FocusDirection.Enter) is left alone — redirecting that too is what made
+ * putting the focus back after a menu land nowhere.
+ */
+private fun Modifier.rememberFocus(memory: FocusMemory): Modifier = this
+    .focusProperties {
+        enter = { direction ->
+            if (direction != FocusDirection.Enter && memory.attached) memory.requester
+            else FocusRequester.Default
+        }
+    }
+    .focusGroup()
+
+/** Tags the card [memory] remembers, so the list can send the focus back to it. */
+@Composable
+private fun Modifier.focusTarget(memory: FocusMemory, id: String): Modifier {
+    val isTarget by remember(memory, id) { derivedStateOf { memory.lastId == id } }
+    if (!isTarget) return this
+    DisposableEffect(memory) {
+        memory.attached = true
+        onDispose { memory.attached = false }
+    }
+    return this.focusRequester(memory.requester)
+}
+
+/**
+ * The last element of the home screen that had the focus. Opening a menu, slider or prompt
+ * moves the focus away, and once it closes Compose parks the focus on the first focusable
+ * (the settings orb) — so the activity calls [restore] just before closing it.
+ */
+class FocusTracker {
+    internal var last: FocusRequester? = null
+
+    /**
+     * Moves the focus back to the last focused element (a no-op if it has gone). Call it
+     * while the overlay still holds the focus, before it goes away.
+     */
+    fun restore() {
+        runCatching { last?.requestFocus() }
+    }
+}
+
+private val LocalFocusTracker = staticCompositionLocalOf<FocusTracker?> { null }
+
+/** Records this element in the [FocusTracker] whenever it takes the focus. */
+@Composable
+private fun Modifier.trackFocus(): Modifier {
+    val tracker = LocalFocusTracker.current ?: return this
+    val requester = remember { FocusRequester() }
+    return this
+        .focusRequester(requester)
+        .onFocusChanged { if (it.isFocused) tracker.last = requester }
 }

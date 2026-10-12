@@ -11,6 +11,7 @@ import alexcmb.mytvlauncher.compose.TvResizeOverlay
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
+import alexcmb.mytvlauncher.compose.FocusTracker
 import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.media.NowPlaying
 import alexcmb.mytvlauncher.media.NowPlayingController
@@ -83,20 +84,35 @@ class LauncherActivity : ComponentActivity() {
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
 
     // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
-    // closing the lot. Assigning `menu` drives it: null clears everything (a leaf action ran);
-    // a spec whose title matches the top refreshes that level (e.g. a toggle flipping); any
-    // other title pushes a new level.
-    private val menuStack = mutableStateListOf<MenuSpec>()
-    private var menu: MenuSpec?
-        get() = menuStack.lastOrNull()
-        set(value) {
-            when {
-                value == null -> menuStack.clear()
-                menuStack.lastOrNull()?.title == value.title ->
-                    menuStack[menuStack.lastIndex] = value
-                else -> menuStack.add(value)
-            }
+    // closing the lot. The stack holds *builders*, not built specs: the visible level is rebuilt
+    // on every recomposition, so it always shows live values — a check moving to the new choice,
+    // "Fond · Dégradé" updating — and choosing something can leave the menu open.
+    private val menuStack = mutableStateListOf<() -> MenuSpec>()
+    // Last focused row (its label) per menu title, so Back lands on the row that opened the submenu.
+    private val menuFocus = mutableMapOf<String, String>()
+
+    /** Shows a menu level: refreshes the top level if it has the same title, else pushes. */
+    private fun openMenu(build: () -> MenuSpec) {
+        val title = build().title
+        if (menuStack.lastOrNull()?.invoke()?.title == title) {
+            menuStack[menuStack.lastIndex] = build
+        } else {
+            menuStack.add(build)
         }
+    }
+
+    /** A leaf action ran (launched something, changed what the menus are about): close all. */
+    private fun closeMenus() {
+        if (menuStack.isNotEmpty()) returnFocus()
+        menuStack.clear()
+        menuFocus.clear()
+    }
+
+    // Where the focus was on the home screen; overlays hand it back there when they close.
+    // Called while the overlay still holds the focus, before it goes away.
+    private val focusTracker = FocusTracker()
+
+    private fun returnFocus() = focusTracker.restore()
     private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
 
@@ -119,6 +135,11 @@ class LauncherActivity : ComponentActivity() {
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
     private var showUsageCount by mutableStateOf(true)
     private var showAppLabels by mutableStateOf(false)
+    private var tabOrder by mutableStateOf<List<String>>(emptyList())
+    private var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
+    private var startupTab by mutableStateOf(HomeTabs.HOME_KEY)
+    // Bumped on each HOME press; the home screen goes back to the startup tab when it changes.
+    private var homeRequests by mutableStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -136,6 +157,9 @@ class LauncherActivity : ComponentActivity() {
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
         showAppLabels = settings.showAppLabels()
+        tabOrder = settings.tabOrder()
+        hiddenTabs = settings.hiddenTabs()
+        startupTab = settings.startupTab() ?: HomeTabs.HOME_KEY
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -159,6 +183,7 @@ class LauncherActivity : ComponentActivity() {
             val groups by viewModel.browseContent.observeAsState(emptyList())
             val tabs = HomeTabs.from(
                 groups, stringResource(R.string.title_home), sources, stringResource(R.string.title_sources),
+                tabOrder, hiddenTabs,
             )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
                 Box {
@@ -177,13 +202,26 @@ class LauncherActivity : ComponentActivity() {
                         nowPlaying = nowPlaying,
                         onLaunch = ::launchShortcut,
                         onLongPress = ::showAppMenu,
+                        onWidgetLongPress = ::showWidgetMenu,
                         onOpenSource = sourceController::open,
                         onPlayPause = nowPlayingController::playPause,
                         onOpenNowPlaying = nowPlayingController::openApp,
                         onSettings = ::showSettingsMenu,
+                        focusTracker = focusTracker,
+                        startupTab = startupTab,
+                        homeRequests = homeRequests,
                     )
-                    // Back pops one level; when the stack empties the menu is gone.
-                    menu?.let { spec -> TvMenu(spec) { menuStack.removeAt(menuStack.lastIndex) } }
+                    // Back pops one level; when the stack empties the menu is gone. A live slider
+                    // (widget size, background brightness) hides the menus so the result shows,
+                    // and they come back at the same level once it's committed or cancelled.
+                    if (resizing == null && backgroundAdjust == null) {
+                        menuStack.lastOrNull()?.let { build ->
+                            TvMenu(build(), menuFocus) {
+                                if (menuStack.size == 1) closeMenus()
+                                else menuStack.removeAt(menuStack.lastIndex)
+                            }
+                        }
+                    }
                     resizing?.let { session ->
                         TvResizeOverlay(
                             label = session.label,
@@ -196,9 +234,11 @@ class LauncherActivity : ComponentActivity() {
                             },
                             onCommit = {
                                 widgetSlot.rescale(session.id, session.percent)
+                                if (menuStack.isEmpty()) returnFocus()
                                 resizing = null
                             },
                             onCancel = {
+                                if (menuStack.isEmpty()) returnFocus()
                                 resizing = null
                                 refreshWidgets()
                             },
@@ -221,9 +261,11 @@ class LauncherActivity : ComponentActivity() {
                             },
                             onCommit = {
                                 settings.setBackgroundIntensity(value)
+                                if (menuStack.isEmpty()) returnFocus()
                                 backgroundAdjust = null
                             },
                             onCancel = {
+                                if (menuStack.isEmpty()) returnFocus()
                                 backgroundAdjust = null
                                 backgroundIntensity = settings.backgroundIntensity()
                             },
@@ -234,7 +276,10 @@ class LauncherActivity : ComponentActivity() {
                             title = stringResource(R.string.category_new_title),
                             hint = stringResource(R.string.category_hint),
                             onSubmit = { viewModel.setCategory(shortcut, it) },
-                            onDismiss = { namingCategoryFor = null },
+                            onDismiss = {
+                                returnFocus()
+                                namingCategoryFor = null
+                            },
                         )
                     }
                 }
@@ -250,6 +295,24 @@ class LauncherActivity : ComponentActivity() {
         sources = sourceController.sources()
         nowPlaying = nowPlayingController.nowPlaying()
         refreshWidgets()
+    }
+
+    // singleTask: HOME while we're the task brings us here instead of a new instance.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.hasCategory(Intent.CATEGORY_HOME)) {
+            // Anything half-done is dropped, as Back would: menus, an uncommitted slider, a prompt.
+            menuStack.clear()
+            menuFocus.clear()
+            if (resizing != null) {
+                resizing = null
+                refreshWidgets()
+            }
+            backgroundAdjust?.let { backgroundIntensity = settings.backgroundIntensity() }
+            backgroundAdjust = null
+            namingCategoryFor = null
+            homeRequests++
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -324,29 +387,32 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    /** Opens the live resize slider for one widget; the menus close so the render is visible. */
+    /** Opens the live resize slider for one widget; the menus hide so the render is visible. */
     private fun startResize(id: Int) {
         val label = widgetSlot.hostedWidgets().firstOrNull { it.first == id }?.second?.toString()
             ?: getString(R.string.widget_resize)
-        menu = null
         resizing = ResizeSession(id, widgetSlot.scaleOf(id), label)
     }
 
-    private fun showAppMenu(shortcut: Shortcut) {
-        menu = MenuSpec(
+    private fun showAppMenu(shortcut: Shortcut) = openMenu {
+        MenuSpec(
             title = shortcut.title,
             items = listOf(
-                MenuItem(getString(R.string.menu_change_category)) { showCategoryMenu(shortcut) },
+                MenuItem(
+                    getString(R.string.menu_change_category),
+                    value = shortcut.category,
+                    submenu = true,
+                ) { showCategoryMenu(shortcut) },
                 MenuItem(getString(R.string.menu_hide)) {
-                    menu = null
+                    closeMenus()
                     viewModel.hideApp(shortcut)
                 },
-                MenuItem(getString(R.string.menu_uninstall)) {
-                    menu = null
+                MenuItem(getString(R.string.menu_uninstall), divider = true) {
+                    closeMenus()
                     startAppIntent(Intent(Intent.ACTION_DELETE, packageUri(shortcut)))
                 },
                 MenuItem(getString(R.string.menu_app_info)) {
-                    menu = null
+                    closeMenus()
                     startAppIntent(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(shortcut))
                     )
@@ -355,56 +421,154 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    private fun showCategoryMenu(shortcut: Shortcut) {
+    private fun showCategoryMenu(shortcut: Shortcut) = openMenu {
         val categories = CategoryOptions.candidates(
             current = shortcut.category,
             existing = viewModel.availableCategories(),
             defaults = listOf(getString(R.string.title_apps), getString(R.string.title_system)),
             presets = resources.getStringArray(R.array.category_presets).toList(),
         )
-        menu = MenuSpec(
+        MenuSpec(
             title = getString(R.string.menu_change_category),
             items = categories.map { category ->
-                MenuItem(category) {
-                    menu = null
+                MenuItem(category, selected = category == shortcut.category) {
+                    closeMenus()
                     viewModel.setCategory(shortcut, category)
                 }
-            } + MenuItem(getString(R.string.category_new)) {
-                menu = null
+            } + MenuItem(getString(R.string.category_new), divider = true) {
+                closeMenus()
                 namingCategoryFor = shortcut
             },
         )
     }
 
-    private fun showSettingsMenu() {
+    private fun showSettingsMenu() = openMenu {
+        // Launcher settings first, then — set apart by a divider — the system and one-shot actions.
         val items = mutableListOf(
-            MenuItem(getString(R.string.action_appearance)) { showAppearanceMenu() },
-            MenuItem(getString(R.string.action_widgets)) { showWidgetsMenu() },
-            MenuItem(getString(R.string.action_android_settings)) {
-                menu = null
-                startAppIntent(Intent(Settings.ACTION_SETTINGS))
-            },
-            MenuItem(getString(R.string.action_check_updates)) {
-                menu = null
-                checkForUpdates()
-            },
+            MenuItem(getString(R.string.action_appearance), submenu = true) { showAppearanceMenu() },
+            MenuItem(getString(R.string.action_tabs), submenu = true) { showTabsMenu() },
+            MenuItem(getString(R.string.action_widgets), submenu = true) { showWidgetsMenu() },
         )
-        // Only offered until it's granted; once the card can read sessions there's nothing to do.
-        if (!nowPlayingController.hasAccess()) {
-            items += MenuItem(getString(R.string.action_now_playing)) { showNowPlayingHelp() }
-        }
         val hidden = viewModel.hiddenApps
         if (hidden.isNotEmpty()) {
-            items += MenuItem(getString(R.string.action_hidden_apps, hidden.size)) {
-                showHiddenAppsMenu()
+            items += MenuItem(
+                getString(R.string.action_hidden_apps_label),
+                value = hidden.size.toString(),
+                submenu = true,
+            ) { showHiddenAppsMenu() }
+        }
+        // Only offered until it's granted; once the card can read sessions there's nothing to do.
+        if (!nowPlayingController.hasAccess()) {
+            items += MenuItem(getString(R.string.action_now_playing), divider = true) { showNowPlayingHelp() }
+        }
+        items += MenuItem(
+            getString(R.string.action_check_updates),
+            value = installedVersion(),
+            divider = nowPlayingController.hasAccess(),
+        ) {
+            closeMenus()
+            checkForUpdates()
+        }
+        items += MenuItem(getString(R.string.action_android_settings)) {
+            closeMenus()
+            startAppIntent(Intent(Settings.ACTION_SETTINGS))
+        }
+        MenuSpec(getString(R.string.action_settings), items)
+    }
+
+    /** Every tab after the hub in its current order, hidden ones included (they can come back). */
+    private fun movableTabs() = HomeTabs.from(
+        viewModel.browseContent.value.orEmpty(),
+        getString(R.string.title_home),
+        sources,
+        getString(R.string.title_sources),
+        tabOrder,
+    ).drop(1)
+
+    private fun tabTitle(key: String): String = when (key) {
+        HomeTabs.HOME_KEY -> getString(R.string.title_home)
+        HomeTabs.SOURCES_KEY -> getString(R.string.title_sources)
+        else -> key
+    }
+
+    /** The tab bar: which tab the screen opens on, then each tab to show, hide or move. */
+    private fun showTabsMenu() = openMenu {
+        val tabs = movableTabs()
+        val items = mutableListOf(
+            MenuItem(getString(R.string.tabs_startup), value = tabTitle(startupTab), submenu = true) {
+                showStartupTabMenu()
+            },
+        )
+        tabs.forEachIndexed { index, tab ->
+            items += MenuItem(
+                tab.title,
+                value = if (tab.key in hiddenTabs) getString(R.string.tab_hidden) else null,
+                submenu = true,
+                divider = index == 0,
+            ) { showTabMenu(tab.key) }
+        }
+        if (tabOrder.isNotEmpty() || hiddenTabs.isNotEmpty()) {
+            items += MenuItem(getString(R.string.tabs_reset), divider = true) {
+                settings.setTabOrder(emptyList()); tabOrder = emptyList()
+                settings.setHiddenTabs(emptySet()); hiddenTabs = emptySet()
             }
         }
-        menu = MenuSpec(getString(R.string.action_settings), items)
+        MenuSpec(getString(R.string.action_tabs), items)
     }
+
+    private fun showStartupTabMenu() = openMenu {
+        // Only the tabs actually in the bar: opening on a hidden one would land on the hub.
+        val keys = listOf(HomeTabs.HOME_KEY) + movableTabs().map { it.key }.filterNot { it in hiddenTabs }
+        MenuSpec(
+            title = getString(R.string.tabs_startup),
+            items = keys.map { key ->
+                MenuItem(tabTitle(key), selected = key == startupTab) {
+                    settings.setStartupTab(key.takeIf { it != HomeTabs.HOME_KEY })
+                    startupTab = key
+                }
+            },
+        )
+    }
+
+    /** One tab: show/hide it, or move it along the bar (the menu stays open to move again). */
+    private fun showTabMenu(key: String) = openMenu {
+        val keys = movableTabs().map { it.key }
+        val position = keys.indexOf(key)
+        fun move(delta: Int) {
+            val next = HomeTabs.move(keys, key, delta)
+            settings.setTabOrder(next)
+            tabOrder = next
+        }
+        MenuSpec(
+            title = tabTitle(key),
+            items = listOf(
+                toggleItem(R.string.tab_show, key !in hiddenTabs) { show ->
+                    val next = if (show) hiddenTabs - key else hiddenTabs + key
+                    settings.setHiddenTabs(next)
+                    hiddenTabs = next
+                    // A hidden tab can't be where the screen opens.
+                    if (!show && startupTab == key) {
+                        settings.setStartupTab(null)
+                        startupTab = HomeTabs.HOME_KEY
+                    }
+                },
+                MenuItem(
+                    getString(R.string.tab_move_left),
+                    value = "${position + 2} / ${keys.size + 1}",
+                    divider = true,
+                ) { move(-1) },
+                MenuItem(getString(R.string.tab_move_right)) { move(+1) },
+            ),
+        )
+    }
+
+    private fun installedVersion(): String? = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName
+    }.getOrNull()
 
     /** Spells out the adb grant for notification access, since the TV can't ask on screen. */
     private fun showNowPlayingHelp() {
-        menu = null
+        closeMenus()
         val component = ComponentName(this, NowPlayingListenerService::class.java)
         val command = "adb shell cmd notification allow_listener ${component.flattenToShortString()}"
         AlertDialog.Builder(this)
@@ -414,96 +578,220 @@ class LauncherActivity : ComponentActivity() {
             .show()
     }
 
-    /** Everything about the widget band, kept off the top-level settings menu. */
-    private fun showWidgetsMenu() {
+    /**
+     * The widget band: add one, or open a hosted widget's own menu. (Long-pressing a widget on
+     * the hub opens that same menu directly; this list is the discoverable way in.)
+     */
+    private fun showWidgetsMenu() = openMenu {
         val items = mutableListOf<MenuItem>()
         // The band is capped, so only offer "add" while there's room for another.
         if (widgetSlot.canAddMore()) {
-            items += MenuItem(getString(R.string.widget_add)) { showWidgetPicker() }
+            items += MenuItem(getString(R.string.widget_add), submenu = true) { showWidgetPicker() }
         }
-        if (widgetSlot.hasWidgets()) {
-            items += MenuItem(getString(R.string.widget_resize)) {
-                pickHostedWidget(R.string.widget_resize, ::startResize)
-            }
-            items += MenuItem(getString(R.string.widget_align)) {
-                pickHostedWidget(R.string.widget_align, ::showAlignmentMenu)
-            }
-            items += MenuItem(getString(R.string.widget_shape)) {
-                pickHostedWidget(R.string.widget_shape, ::showShapeMenu)
-            }
-            items += MenuItem(getString(R.string.widget_render)) {
-                pickHostedWidget(R.string.widget_render, ::showFitMenu)
-            }
-            items += MenuItem(getString(R.string.widget_remove)) {
-                pickHostedWidget(R.string.widget_remove) { menu = null; widgetSlot.remove(it) }
-            }
+        items += widgetSlot.hostedWidgets().mapIndexed { index, (id, label) ->
+            MenuItem(
+                label.toString(),
+                value = hostedWidget(id)?.let { alignmentName(it.alignment) },
+                submenu = true,
+                divider = index == 0,
+            ) { showWidgetMenu(id) }
         }
-        menu = MenuSpec(getString(R.string.action_widgets), items)
+        MenuSpec(getString(R.string.action_widgets), items)
     }
 
-    private fun showAppearanceMenu() {
-        menu = MenuSpec(
-            title = getString(R.string.action_appearance),
+    /** Everything about one hosted widget: opened by long-pressing it, or from Widgets. */
+    private fun showWidgetMenu(id: Int) = openMenu {
+        val label = widgetSlot.hostedWidgets().firstOrNull { it.first == id }?.second?.toString()
+            ?: getString(R.string.action_widgets)
+        val widget = hostedWidget(id)
+        MenuSpec(
+            title = label,
             items = listOf(
-                MenuItem(getString(R.string.action_accent)) { showAccentMenu() },
-                MenuItem(getString(R.string.action_clock)) { showClockMenu() },
-                MenuItem(getString(R.string.action_background)) { showBackgroundMenu() },
-                MenuItem(getString(R.string.action_card_size)) { showCardSizeMenu() },
-                MenuItem(getString(R.string.action_display)) { showDisplayMenu() },
+                MenuItem(getString(R.string.widget_menu_size), value = "${widgetSlot.scaleOf(id)} %") {
+                    startResize(id)
+                },
+                MenuItem(
+                    getString(R.string.widget_menu_align),
+                    value = widget?.let { alignmentName(it.alignment) },
+                    submenu = true,
+                ) { showAlignmentMenu(id) },
+                MenuItem(
+                    getString(R.string.widget_menu_shape),
+                    value = widget?.let { shapeName(it.shape) },
+                    submenu = true,
+                ) { showShapeMenu(id) },
+                MenuItem(
+                    getString(R.string.widget_render),
+                    value = widget?.let { widgetFitName(it.fit) },
+                    submenu = true,
+                ) { showFitMenu(id) },
+                MenuItem(getString(R.string.widget_menu_remove), divider = true) {
+                    closeMenus()
+                    widgetSlot.remove(id)
+                },
             ),
         )
     }
 
-    private fun showDisplayMenu() {
-        menu = MenuSpec(
+    private fun alignmentName(alignment: WidgetAlignment): String = getString(
+        when (alignment) {
+            WidgetAlignment.START -> R.string.widget_align_start
+            WidgetAlignment.CENTER -> R.string.widget_align_center
+            WidgetAlignment.END -> R.string.widget_align_end
+        }
+    )
+
+    private fun shapeName(shape: WidgetShape): String = getString(
+        when (shape) {
+            WidgetShape.WIDE -> R.string.widget_shape_wide
+            WidgetShape.PANORAMIC -> R.string.widget_shape_panoramic
+            WidgetShape.STANDARD -> R.string.widget_shape_standard
+            WidgetShape.SQUARE -> R.string.widget_shape_square
+        }
+    )
+
+    private fun widgetFitName(fit: WidgetFit): String = getString(
+        when (fit) {
+            WidgetFit.NATIVE -> R.string.widget_render_native_short
+            WidgetFit.FIT -> R.string.widget_render_fit_short
+        }
+    )
+
+    private fun showAppearanceMenu() = openMenu {
+        MenuSpec(
+            title = getString(R.string.action_appearance),
+            items = listOf(
+                MenuItem(
+                    getString(R.string.action_accent),
+                    value = if (accentAuto) getString(R.string.accent_auto_short) else accentName(accent),
+                    submenu = true,
+                ) { showAccentMenu() },
+                MenuItem(
+                    getString(R.string.action_background),
+                    value = backgroundStyleName(background),
+                    submenu = true,
+                ) { showBackgroundMenu() },
+                // Colours above, layout of the screen below.
+                MenuItem(
+                    getString(R.string.action_card_size),
+                    value = cardSizeName(cardSize),
+                    submenu = true,
+                    divider = true,
+                ) { showCardSizeMenu() },
+                MenuItem(getString(R.string.action_display), submenu = true) { showDisplayMenu() },
+                MenuItem(getString(R.string.action_clock), submenu = true) { showClockMenu() },
+            ),
+        )
+    }
+
+    private fun showDisplayMenu() = openMenu {
+        MenuSpec(
             title = getString(R.string.action_display),
             items = listOf(
                 toggleItem(R.string.display_usage_count, showUsageCount) {
-                    settings.setShowUsageCount(it); showUsageCount = it; showDisplayMenu()
+                    settings.setShowUsageCount(it); showUsageCount = it
                 },
                 toggleItem(R.string.display_app_names, showAppLabels) {
-                    settings.setShowAppLabels(it); showAppLabels = it; showDisplayMenu()
+                    settings.setShowAppLabels(it); showAppLabels = it
                 },
             ),
         )
     }
 
-    private fun showCardSizeMenu() {
-        fun choice(label: Int, size: CardSize) = MenuItem(getString(label)) {
-            menu = null
-            settings.setCardSize(size)
-            cardSize = size
+    private fun cardSizeName(size: CardSize): String = getString(
+        when (size) {
+            CardSize.SMALL -> R.string.widget_size_small
+            CardSize.MEDIUM -> R.string.widget_size_medium
+            CardSize.LARGE -> R.string.widget_size_large
         }
-        menu = MenuSpec(
+    )
+
+    private fun showCardSizeMenu() = openMenu {
+        MenuSpec(
             title = getString(R.string.action_card_size),
+            items = CardSize.entries.map { size ->
+                MenuItem(cardSizeName(size), selected = size == cardSize) {
+                    settings.setCardSize(size)
+                    cardSize = size
+                }
+            },
+        )
+    }
+
+    private fun backgroundStyleName(style: BackgroundStyle): String = getString(
+        when (style) {
+            BackgroundStyle.AMBIENT -> R.string.background_ambient
+            BackgroundStyle.ACCENT_GRADIENT -> R.string.background_gradient
+            BackgroundStyle.SOLID -> R.string.background_solid
+            BackgroundStyle.WALLPAPER -> R.string.background_wallpaper
+        }
+    )
+
+    private fun wallpaperFitName(fit: WallpaperFit): String = getString(
+        when (fit) {
+            WallpaperFit.FILL -> R.string.wallpaper_fit_fill
+            WallpaperFit.STRETCH -> R.string.wallpaper_fit_stretch
+            WallpaperFit.FIT -> R.string.wallpaper_fit_fit
+            WallpaperFit.CENTER -> R.string.wallpaper_fit_center
+            WallpaperFit.SPAN -> R.string.wallpaper_fit_span
+        }
+    )
+
+    /** Background: what fills it (style), the image behind it, and how strongly it shows. */
+    private fun showBackgroundMenu() = openMenu {
+        val hasImage = settings.backgroundImageUri() != null
+        MenuSpec(
+            title = getString(R.string.action_background),
             items = listOf(
-                choice(R.string.widget_size_small, CardSize.SMALL),
-                choice(R.string.widget_size_medium, CardSize.MEDIUM),
-                choice(R.string.widget_size_large, CardSize.LARGE),
+                MenuItem(
+                    getString(R.string.background_style),
+                    value = backgroundStyleName(background),
+                    submenu = true,
+                ) { showBackgroundStyleMenu() },
+                MenuItem(
+                    getString(R.string.background_wallpaper),
+                    value = getString(if (hasImage) R.string.background_image_set else R.string.background_image_none),
+                    submenu = true,
+                ) { showWallpaperMenu() },
+                MenuItem(
+                    getString(R.string.background_brightness),
+                    value = "$backgroundIntensity %",
+                ) { backgroundAdjust = settings.backgroundIntensity() },
             ),
         )
     }
 
-    private fun showBackgroundMenu() {
-        fun choice(label: Int, style: BackgroundStyle) = MenuItem(getString(label)) {
-            menu = null
-            settings.setBackground(style)
-            background = style
-        }
-        val items = mutableListOf(
-            choice(R.string.background_ambient, BackgroundStyle.AMBIENT),
-            choice(R.string.background_gradient, BackgroundStyle.ACCENT_GRADIENT),
-            choice(R.string.background_solid, BackgroundStyle.SOLID),
-            MenuItem(getString(R.string.background_image)) { menu = null; pickWallpaper() },
-            MenuItem(getString(R.string.background_brightness)) {
-                menu = null
-                backgroundAdjust = settings.backgroundIntensity()
+    private fun showBackgroundStyleMenu() = openMenu {
+        // "Image" is only a style once there's an image to show.
+        val styles = listOf(
+            BackgroundStyle.AMBIENT,
+            BackgroundStyle.ACCENT_GRADIENT,
+            BackgroundStyle.SOLID,
+            BackgroundStyle.WALLPAPER,
+        ).filter { it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null }
+        MenuSpec(
+            title = getString(R.string.background_style),
+            items = styles.map { style ->
+                MenuItem(backgroundStyleName(style), selected = style == background) {
+                    settings.setBackground(style)
+                    background = style
+                }
             },
         )
-        if (settings.backgroundImageUri() != null) {
-            items += MenuItem(getString(R.string.wallpaper_fit)) { showWallpaperFitMenu() }
-            items += MenuItem(getString(R.string.background_image_remove)) {
-                menu = null
+    }
+
+    private fun showWallpaperMenu() = openMenu {
+        val hasImage = settings.backgroundImageUri() != null
+        val items = mutableListOf(
+            MenuItem(getString(R.string.background_image)) { pickWallpaper() },
+        )
+        if (hasImage) {
+            items += MenuItem(
+                getString(R.string.wallpaper_fit),
+                value = wallpaperFitName(wallpaperFit),
+                submenu = true,
+            ) { showWallpaperFitMenu() }
+            items += MenuItem(getString(R.string.background_image_remove), divider = true) {
                 settings.setBackgroundImageUri(null)
                 backgroundImage = null
                 if (background == BackgroundStyle.WALLPAPER) {
@@ -512,24 +800,18 @@ class LauncherActivity : ComponentActivity() {
                 }
             }
         }
-        menu = MenuSpec(getString(R.string.action_background), items)
+        MenuSpec(getString(R.string.background_wallpaper), items)
     }
 
-    private fun showWallpaperFitMenu() {
-        fun choice(label: Int, fit: WallpaperFit) = MenuItem(getString(label)) {
-            menu = null
-            settings.setWallpaperFit(fit)
-            wallpaperFit = fit
-        }
-        menu = MenuSpec(
+    private fun showWallpaperFitMenu() = openMenu {
+        MenuSpec(
             title = getString(R.string.wallpaper_fit),
-            items = listOf(
-                choice(R.string.wallpaper_fit_fill, WallpaperFit.FILL),
-                choice(R.string.wallpaper_fit_stretch, WallpaperFit.STRETCH),
-                choice(R.string.wallpaper_fit_fit, WallpaperFit.FIT),
-                choice(R.string.wallpaper_fit_center, WallpaperFit.CENTER),
-                choice(R.string.wallpaper_fit_span, WallpaperFit.SPAN),
-            ),
+            items = WallpaperFit.entries.map { fit ->
+                MenuItem(wallpaperFitName(fit), selected = fit == wallpaperFit) {
+                    settings.setWallpaperFit(fit)
+                    wallpaperFit = fit
+                }
+            },
         )
     }
 
@@ -571,40 +853,43 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    private fun showClockMenu() {
-        menu = MenuSpec(
+    private fun showClockMenu() = openMenu {
+        MenuSpec(
             title = getString(R.string.action_clock),
             items = listOf(
                 toggleItem(R.string.clock_seconds, clockShowSeconds) {
-                    settings.setClockShowSeconds(it); clockShowSeconds = it; showClockMenu()
+                    settings.setClockShowSeconds(it); clockShowSeconds = it
                 },
                 toggleItem(R.string.clock_date, clockShowDate) {
-                    settings.setClockShowDate(it); clockShowDate = it; showClockMenu()
+                    settings.setClockShowDate(it); clockShowDate = it
                 },
                 toggleItem(R.string.clock_greeting, showGreeting) {
-                    settings.setShowGreeting(it); showGreeting = it; showClockMenu()
+                    settings.setShowGreeting(it); showGreeting = it
                 },
             ),
         )
     }
 
-    /** A menu row that shows its on/off state and flips it, leaving the menu open. */
-    private fun toggleItem(@StringRes label: Int, value: Boolean, onToggle: (Boolean) -> Unit): MenuItem {
-        val state = getString(if (value) R.string.state_on else R.string.state_off)
-        return MenuItem("${getString(label)}  ·  $state") { onToggle(!value) }
-    }
+    /** A menu row that shows its on/off state on the right and flips it; the menu stays open. */
+    private fun toggleItem(@StringRes label: Int, value: Boolean, onToggle: (Boolean) -> Unit): MenuItem =
+        MenuItem(
+            getString(label),
+            value = getString(if (value) R.string.state_on else R.string.state_off),
+        ) { onToggle(!value) }
 
-    private fun showAccentMenu() {
-        val auto = MenuItem(getString(R.string.accent_auto)) {
-            menu = null
+    private fun showAccentMenu() = openMenu {
+        val auto = MenuItem(getString(R.string.accent_auto), selected = accentAuto) {
             settings.setAccentAuto(true)
             accentAuto = true
         }
-        menu = MenuSpec(
+        MenuSpec(
             title = getString(R.string.action_accent),
             items = listOf(auto) + AccentColor.entries.map { colour ->
-                MenuItem(accentName(colour), swatch = Color(colour.argb)) {
-                    menu = null
+                MenuItem(
+                    accentName(colour),
+                    swatch = Color(colour.argb),
+                    selected = !accentAuto && colour == accent,
+                ) {
                     settings.setAccentAuto(false)
                     accentAuto = false
                     settings.setAccent(colour)
@@ -629,40 +914,33 @@ class LauncherActivity : ComponentActivity() {
     private fun showWidgetPicker() {
         val providers = widgetSlot.availableProviders()
         if (providers.isEmpty()) {
-            menu = null
+            closeMenus()
             toast(R.string.widget_none_available)
             return
         }
-        menu = MenuSpec(
-            title = getString(R.string.widget_add),
-            items = providers.map { provider ->
-                MenuItem(provider.loadLabel(packageManager).toString()) {
-                    menu = null
-                    widgetSlot.add(provider)
-                }
-            },
-        )
-    }
-
-    /** Picks which hosted widget to act on, skipping the question when there's only one. */
-    private fun pickHostedWidget(@StringRes title: Int, action: (Int) -> Unit) {
-        val hosted = widgetSlot.hostedWidgets()
-        when (hosted.size) {
-            0 -> menu = null
-            1 -> action(hosted.first().first)
-            else -> menu = MenuSpec(
-                title = getString(title),
-                items = hosted.map { (id, label) -> MenuItem(label.toString()) { action(id) } },
+        openMenu {
+            MenuSpec(
+                title = getString(R.string.widget_add),
+                items = providers.map { provider ->
+                    MenuItem(provider.loadLabel(packageManager).toString()) {
+                        closeMenus()
+                        widgetSlot.add(provider)
+                    }
+                },
             )
         }
     }
 
-    private fun showAlignmentMenu(id: Int) {
-        fun choice(label: Int, alignment: WidgetAlignment) = MenuItem(getString(label)) {
-            menu = null
-            widgetSlot.align(id, alignment)
-        }
-        menu = MenuSpec(
+    /** The stored settings of one hosted widget, for showing its current choices. */
+    private fun hostedWidget(id: Int) = widgetSlot.hostedForDisplay().firstOrNull { it.id == id }
+
+    private fun showAlignmentMenu(id: Int) = openMenu {
+        val current = hostedWidget(id)?.alignment
+        fun choice(label: Int, alignment: WidgetAlignment) =
+            MenuItem(getString(label), selected = alignment == current) {
+                widgetSlot.align(id, alignment)
+            }
+        MenuSpec(
             title = getString(R.string.widget_align),
             items = listOf(
                 choice(R.string.widget_align_start, WidgetAlignment.START),
@@ -672,12 +950,13 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    private fun showShapeMenu(id: Int) {
-        fun choice(label: Int, shape: WidgetShape) = MenuItem(getString(label)) {
-            menu = null
-            widgetSlot.reshape(id, shape)
-        }
-        menu = MenuSpec(
+    private fun showShapeMenu(id: Int) = openMenu {
+        val current = hostedWidget(id)?.shape
+        fun choice(label: Int, shape: WidgetShape) =
+            MenuItem(getString(label), selected = shape == current) {
+                widgetSlot.reshape(id, shape)
+            }
+        MenuSpec(
             title = getString(R.string.widget_shape),
             items = listOf(
                 choice(R.string.widget_shape_wide, WidgetShape.WIDE),
@@ -688,12 +967,13 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    private fun showFitMenu(id: Int) {
-        fun choice(label: Int, fit: WidgetFit) = MenuItem(getString(label)) {
-            menu = null
-            widgetSlot.refit(id, fit)
-        }
-        menu = MenuSpec(
+    private fun showFitMenu(id: Int) = openMenu {
+        val current = hostedWidget(id)?.fit
+        fun choice(label: Int, fit: WidgetFit) =
+            MenuItem(getString(label), selected = fit == current) {
+                widgetSlot.refit(id, fit)
+            }
+        MenuSpec(
             title = getString(R.string.widget_render),
             items = listOf(
                 choice(R.string.widget_render_native, WidgetFit.NATIVE),
@@ -702,12 +982,12 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    private fun showHiddenAppsMenu() {
-        menu = MenuSpec(
+    private fun showHiddenAppsMenu() = openMenu {
+        MenuSpec(
             title = getString(R.string.action_hidden_apps_title),
             items = viewModel.hiddenApps.map { app ->
                 MenuItem(app.title) {
-                    menu = null
+                    closeMenus()
                     viewModel.showApp(app)
                 }
             },
@@ -722,16 +1002,18 @@ class LauncherActivity : ComponentActivity() {
                 release == null -> toast(R.string.update_check_failed)
                 release.versionCode <= updateManager.currentVersionCode() ->
                     toast(R.string.update_up_to_date)
-                else -> menu = MenuSpec(
-                    title = getString(R.string.update_available_title, release.versionName),
-                    items = listOf(
-                        MenuItem(getString(R.string.update_install)) {
-                            menu = null
-                            downloadAndInstall(release)
-                        },
-                        MenuItem(getString(android.R.string.cancel)) { menu = null },
-                    ),
-                )
+                else -> openMenu {
+                    MenuSpec(
+                        title = getString(R.string.update_available_title, release.versionName),
+                        items = listOf(
+                            MenuItem(getString(R.string.update_install)) {
+                                closeMenus()
+                                downloadAndInstall(release)
+                            },
+                            MenuItem(getString(android.R.string.cancel)) { closeMenus() },
+                        ),
+                    )
+                }
             }
         }
     }

@@ -14,12 +14,19 @@
     <string name="action_card_size">Taille des cartes</string>
     <string name="action_display">Affichage</string>
     <string name="action_widgets">Widgets</string>
+    <string name="action_tabs">Onglets</string>
+    <string name="tabs_startup">Onglet au démarrage</string>
+    <string name="tabs_reset">Rétablir les onglets par défaut</string>
+    <string name="tab_hidden">Masqué</string>
+    <string name="tab_show">Afficher l\'onglet</string>
+    <string name="tab_move_left">Déplacer à gauche</string>
+    <string name="tab_move_right">Déplacer à droite</string>
     <string name="display_usage_count">Compteur d\'usage</string>
     <string name="display_app_names">Noms d\'apps</string>
     <string name="background_ambient">Bannière ambiante</string>
     <string name="background_gradient">Dégradé d\'accent</string>
     <string name="background_solid">Uni</string>
-    <string name="background_image">Image…</string>
+    <string name="background_image">Choisir une image…</string>
     <string name="background_image_remove">Retirer l\'image</string>
     <string name="background_brightness">Luminosité du fond</string>
     <string name="background_no_picker">Aucun sélecteur d\'image sur cet appareil</string>
@@ -84,7 +91,6 @@
     <string name="menu_uninstall">Désinstaller</string>
     <string name="menu_app_info">Infos de l\'app</string>
     <string name="action_open_failed">Ouverture impossible</string>
-    <string name="action_hidden_apps">Apps masquées (%1$d)</string>
     <string name="action_hidden_apps_title">Afficher une app masquée</string>
     <string name="no_hidden_apps">Aucune app masquée</string>
     <string name="update_checking">Recherche de mises à jour…</string>
@@ -95,4 +101,16 @@
     <string name="update_install">Installer</string>
     <string name="update_downloading">Téléchargement…</string>
     <string name="update_download_failed">Échec du téléchargement</string>
+    <string name="accent_auto_short">Auto</string>
+    <string name="background_style">Style</string>
+    <string name="background_wallpaper">Image</string>
+    <string name="background_image_set">Définie</string>
+    <string name="background_image_none">Aucune</string>
+    <string name="action_hidden_apps_label">Apps masquées</string>
+    <string name="widget_menu_size">Taille</string>
+    <string name="widget_menu_align">Emplacement</string>
+    <string name="widget_menu_shape">Forme</string>
+    <string name="widget_menu_remove">Retirer ce widget</string>
+    <string name="widget_render_native_short">Natif</string>
+    <string name="widget_render_fit_short">Ajusté</string>
 </resources>

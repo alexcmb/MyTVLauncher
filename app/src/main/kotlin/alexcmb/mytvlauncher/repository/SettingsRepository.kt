@@ -73,6 +73,11 @@ class SettingsRepository private constructor(context: Context) {
         const val BG_INTENSITY_STEP = 10
         private const val KEY_USAGE_COUNT = "usage_count"
         private const val KEY_APP_LABELS = "app_labels"
+        private const val KEY_TAB_ORDER = "tab_order"
+        private const val KEY_TABS_HIDDEN = "tabs_hidden"
+        private const val KEY_STARTUP_TAB = "startup_tab"
+        // Category names are free text; a newline is the one thing they can't contain.
+        private const val TAB_SEPARATOR = "\n"
     }
 
     private val sharedPreferences = context.getSharedPreferences("settings", 0)
@@ -159,4 +164,31 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setShowAppLabels(show: Boolean) =
         sharedPreferences.edit().putBoolean(KEY_APP_LABELS, show).apply()
+
+    /** The user's tab order, as tab keys (see HomeTabs); empty means the default order. */
+    fun tabOrder(): List<String> =
+        sharedPreferences.getString(KEY_TAB_ORDER, null)
+            ?.split(TAB_SEPARATOR)?.filter { it.isNotEmpty() }
+            ?: emptyList()
+
+    fun setTabOrder(keys: List<String>) =
+        sharedPreferences.edit().apply {
+            if (keys.isEmpty()) remove(KEY_TAB_ORDER)
+            else putString(KEY_TAB_ORDER, keys.joinToString(TAB_SEPARATOR))
+        }.apply()
+
+    /** Keys of the tabs the user has hidden from the bar. */
+    fun hiddenTabs(): Set<String> =
+        sharedPreferences.getStringSet(KEY_TABS_HIDDEN, emptySet())?.toSet() ?: emptySet()
+
+    fun setHiddenTabs(keys: Set<String>) =
+        sharedPreferences.edit().putStringSet(KEY_TABS_HIDDEN, keys).apply()
+
+    /** The key of the tab the home screen opens on (and returns to on HOME); null = the hub. */
+    fun startupTab(): String? = sharedPreferences.getString(KEY_STARTUP_TAB, null)
+
+    fun setStartupTab(key: String?) =
+        sharedPreferences.edit().apply {
+            if (key == null) remove(KEY_STARTUP_TAB) else putString(KEY_STARTUP_TAB, key)
+        }.apply()
 }

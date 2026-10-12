@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,12 +36,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
-/** One line of a [TvMenu]; an optional swatch shows a colour choice. */
-data class MenuItem(val label: String, val swatch: Color? = null, val onClick: () -> Unit)
+/**
+ * One line of a [TvMenu]. [value] shows the current setting on the right, [selected] marks the
+ * active choice of a pick-one list with a check, and [submenu] adds a chevron for rows that
+ * open another level. An optional [swatch] shows a colour choice. [divider] draws a separator
+ * above the row, to set a group apart (the system actions, a destructive "remove").
+ */
+data class MenuItem(
+    val label: String,
+    val swatch: Color? = null,
+    val value: String? = null,
+    val selected: Boolean = false,
+    val submenu: Boolean = false,
+    val divider: Boolean = false,
+    val onClick: () -> Unit,
+)
 
 /** A menu to show: nesting is just replacing the spec with the next one. */
 data class MenuSpec(val title: String, val items: List<MenuItem>)
@@ -49,20 +64,33 @@ private val Panel = Color(0xF0202020)
 private val Muted = Color(0xFF9AA0B4)
 
 /**
- * A menu over the home screen: scrim, dark panel, focusable rows. Back closes it, and the
- * first row takes the focus so the remote lands somewhere useful.
+ * A menu over the home screen: scrim, dark panel, focusable rows. Back steps out. [focusMemory]
+ * remembers the last focused row (by label, so it survives rows moving) per menu title, so
+ * stepping back lands on the row that opened the submenu; a fresh menu starts on its selected
+ * choice, else its first row.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
+fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: () -> Unit) {
     BackHandler(onBack = onDismiss)
-    val firstRow = remember { FocusRequester() }
-    LaunchedEffect(spec) { firstRow.requestFocus() }
+    val requesters = remember(spec.items.size) { List(spec.items.size) { FocusRequester() } }
+    // Keyed on the title (a new level) and the row count (a level that grew or shrank), not on
+    // the spec itself: a level that merely refreshes — a check moving, a value changing — must
+    // keep the focus where the user is.
+    LaunchedEffect(spec.title, spec.items.size) {
+        if (requesters.isEmpty()) return@LaunchedEffect
+        val target = focusMemory[spec.title]
+            ?.let { label -> spec.items.indexOfFirst { it.label == label }.takeIf { it >= 0 } }
+            ?: spec.items.indexOfFirst { it.selected }.takeIf { it >= 0 }
+            ?: 0
+        requesters[target.coerceIn(0, requesters.lastIndex)].requestFocus()
+    }
 
-    // A long press opens this menu, but the key-up that ends that press is still to come:
-    // it would land on the row that just took focus and fire it. Waiting a fixed delay
-    // wouldn't do — the user releases whenever they like — so swallow input until the key
-    // is actually released. Preview events reach us before the focused row.
+    // A long press opens some menus while the key is still held: its auto-repeats and the
+    // final key-up would land on the row that just took focus and fire it. Swallow those, but
+    // only those — a fresh press (repeat count 0) is the user acting on the menu, so it goes
+    // straight through. A menu opened by a plain click sees a fresh press first and never
+    // loses a key.
     var armed by remember { mutableStateOf(false) }
 
     Box(
@@ -70,15 +98,20 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
                 if (armed) return@onPreviewKeyEvent false
-                if (event.type == KeyEventType.KeyUp) armed = true
-                true
+                if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+                    armed = true
+                    false
+                } else {
+                    if (event.type == KeyEventType.KeyUp) armed = true
+                    true
+                }
             }
             .background(Color.Black.copy(alpha = 0.6f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 260.dp, max = 380.dp)
+                .widthIn(min = 280.dp, max = 440.dp)
                 .heightIn(max = 480.dp)
                 .background(Panel, RoundedCornerShape(12.dp))
                 .padding(vertical = 16.dp, horizontal = 12.dp),
@@ -91,19 +124,28 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
             )
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 spec.items.forEachIndexed { index, item ->
+                    if (item.divider && index > 0) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .height(1.dp)
+                                .background(Color.White.copy(alpha = 0.12f))
+                        )
+                    }
                     // Trap the focus inside the menu: left/right have nowhere to go here and
                     // would otherwise escape to the launcher behind the scrim, and so would up
                     // off the first row or down off the last. Cancel those moves; up/down
                     // between rows still works. Back is the only way out.
                     val rowModifier = Modifier
-                        .then(if (index == 0) Modifier.focusRequester(firstRow) else Modifier)
+                        .focusRequester(requesters[index])
                         .focusProperties {
                             left = FocusRequester.Cancel
                             right = FocusRequester.Cancel
                             if (index == 0) up = FocusRequester.Cancel
                             if (index == spec.items.lastIndex) down = FocusRequester.Cancel
                         }
-                    MenuRow(item, rowModifier)
+                    MenuRow(item, rowModifier) { focusMemory[spec.title] = item.label }
                 }
             }
         }
@@ -111,15 +153,19 @@ fun TvMenu(spec: MenuSpec, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MenuRow(item: MenuItem, modifier: Modifier) {
+private fun MenuRow(item: MenuItem, modifier: Modifier, onFocused: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    val accent = LocalAccent.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
             .clickable { item.onClick() }
             .background(
-                color = if (focused) LocalAccent.current else Color.Transparent,
+                color = if (focused) accent else Color.Transparent,
                 shape = RoundedCornerShape(8.dp),
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
@@ -129,6 +175,32 @@ private fun MenuRow(item: MenuItem, modifier: Modifier) {
             Box(Modifier.size(14.dp).background(item.swatch, CircleShape))
             Spacer(Modifier.width(10.dp))
         }
-        Text(item.label, color = Color.White, fontSize = 15.sp)
+        Text(
+            text = item.label,
+            color = Color.White,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        item.value?.let {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = it,
+                color = if (focused) Color.White.copy(alpha = 0.85f) else Muted,
+                fontSize = 14.sp,
+                maxLines = 1,
+            )
+        }
+        when {
+            item.selected -> {
+                Spacer(Modifier.width(12.dp))
+                Text("✓", color = if (focused) Color.White else accent, fontSize = 16.sp)
+            }
+            item.submenu -> {
+                Spacer(Modifier.width(10.dp))
+                Text("›", color = if (focused) Color.White else Muted, fontSize = 18.sp)
+            }
+        }
     }
 }

@@ -1,0 +1,22 @@
+# Weekly update PRs for the Gradle libraries/plugins and for the (SHA-pinned) actions in the
+# workflows; security fixes for a vulnerable dependency come as soon as they're published.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      # Compose, the BOM and tv-material move together; one PR rather than a dozen.
+      compose:
+        patterns: ['androidx.compose*', 'androidx.tv*']
+      kotlin:
+        patterns: ['org.jetbrains.kotlin*']
+    commit-message:
+      prefix: chore
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
