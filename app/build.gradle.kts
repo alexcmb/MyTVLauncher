@@ -81,11 +81,11 @@ dependencies {
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     // Compose for TV — the whole UI.
-    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("androidx.activity:activity-compose")
-    implementation("androidx.tv:tv-material:1.0.0")
+    implementation("androidx.tv:tv-material:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }
