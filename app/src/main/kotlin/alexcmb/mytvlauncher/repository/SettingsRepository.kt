@@ -76,7 +76,9 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_TAB_ORDER = "tab_order"
         private const val KEY_TABS_HIDDEN = "tabs_hidden"
         private const val KEY_STARTUP_TAB = "startup_tab"
-        // Category names are free text; a newline is the one thing they can't contain.
+        private const val KEY_PINNED_APPS = "pinned_apps"
+        // List separator. Category names are free text; a newline is the one thing they can't
+        // contain (and package names never do).
         private const val TAB_SEPARATOR = "\n"
     }
 
@@ -183,6 +185,18 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setHiddenTabs(keys: Set<String>) =
         sharedPreferences.edit().putStringSet(KEY_TABS_HIDDEN, keys).apply()
+
+    /** Package names pinned to the hub's favourites row, in the user's order. */
+    fun pinnedApps(): List<String> =
+        sharedPreferences.getString(KEY_PINNED_APPS, null)
+            ?.split(TAB_SEPARATOR)?.filter { it.isNotEmpty() }
+            ?: emptyList()
+
+    fun setPinnedApps(ids: List<String>) =
+        sharedPreferences.edit().apply {
+            if (ids.isEmpty()) remove(KEY_PINNED_APPS)
+            else putString(KEY_PINNED_APPS, ids.joinToString(TAB_SEPARATOR))
+        }.apply()
 
     /** The key of the tab the home screen opens on (and returns to on HOME); null = the hub. */
     fun startupTab(): String? = sharedPreferences.getString(KEY_STARTUP_TAB, null)
