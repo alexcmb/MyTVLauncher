@@ -54,6 +54,9 @@ class ShortcutRepository(private val context: Context) {
         categoryData.update(id, category)
     }
 
+    /** Forgets the app's chosen category: it goes back to its default (Apps or System). */
+    fun resetCategory(id: String) = categoryData.delete(id)
+
     fun hiddenIds(): Set<String> = hiddenData.query()
 
     fun hide(id: String) = hiddenData.add(id)

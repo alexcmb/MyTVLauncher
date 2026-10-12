@@ -13,4 +13,12 @@ object CategoryOptions {
         defaults: List<String>,
         presets: List<String>,
     ): List<String> = (existing + defaults + presets).distinct().filter { it != current }
+
+    /**
+     * A typed category name made usable, or null if there's nothing to use: spaces trimmed
+     * and collapsed, and no leading '#', which marks the built-in tabs' keys (HomeTabs).
+     */
+    fun cleanName(raw: String): String? =
+        raw.trim().replace(Regex("\\s+"), " ")
+            .takeIf { it.isNotEmpty() && !it.startsWith("#") }
 }

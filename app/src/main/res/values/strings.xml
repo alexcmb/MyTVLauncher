@@ -89,6 +89,15 @@
     <string name="category_new">New category…</string>
     <string name="category_new_title">New category</string>
     <string name="category_hint">Category name</string>
+    <string name="category_rename">Rename…</string>
+    <string name="category_rename_title">Rename the category</string>
+    <string name="category_delete">Delete the category</string>
+    <string name="category_delete_title">Delete “%1$s”?</string>
+    <string name="category_delete_confirm">Yes, delete</string>
+    <plurals name="category_app_count">
+        <item quantity="one">%d app</item>
+        <item quantity="other">%d apps</item>
+    </plurals>
     <string name="menu_hide">Hide from launcher</string>
     <string name="menu_pin">Pinned to Home</string>
     <string name="menu_uninstall">Uninstall</string>

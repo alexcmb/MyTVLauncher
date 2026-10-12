@@ -121,4 +121,12 @@ class HomeTabsTest {
         assertEquals(keys, HomeTabs.move(keys, "c", +1))
         assertEquals(keys, HomeTabs.move(keys, "zzz", +1))
     }
+
+    @Test
+    fun `renaming a category keeps its place, and merging drops the duplicate`() {
+        val keys = listOf("Games", HomeTabs.SOURCES_KEY, "Kids")
+        assertEquals(listOf("Jeux", HomeTabs.SOURCES_KEY, "Kids"), HomeTabs.renameKey(keys, "Games", "Jeux"))
+        assertEquals(listOf("Kids", HomeTabs.SOURCES_KEY), HomeTabs.renameKey(keys, "Games", "Kids"))
+        assertEquals(keys, HomeTabs.renameKey(keys, "Music", "Musique"))
+    }
 }

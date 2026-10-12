@@ -114,7 +114,9 @@ class LauncherActivity : ComponentActivity() {
     private val focusTracker = FocusTracker()
 
     private fun returnFocus() = focusTracker.restore()
-    private var namingCategoryFor by mutableStateOf<Shortcut?>(null)
+    /** The name prompt on screen: its title, the text it starts with, and what to do with a name. */
+    private data class NamePrompt(val title: String, val initial: String, val onName: (String) -> Unit)
+    private var namePrompt by mutableStateOf<NamePrompt?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
 
     /** A live widget resize in progress: its target, slider value, and panel label. */
@@ -217,8 +219,9 @@ class LauncherActivity : ComponentActivity() {
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
-                    // and they come back at the same level once it's committed or cancelled.
-                    if (resizing == null && backgroundAdjust == null) {
+                    // and they come back at the same level once it's committed or cancelled. A
+                    // name prompt opened from a menu hides it the same way.
+                    if (resizing == null && backgroundAdjust == null && namePrompt == null) {
                         menuStack.lastOrNull()?.let { build ->
                             TvMenu(build(), menuFocus) {
                                 if (menuStack.size == 1) closeMenus()
@@ -275,14 +278,17 @@ class LauncherActivity : ComponentActivity() {
                             },
                         )
                     }
-                    namingCategoryFor?.let { shortcut ->
+                    namePrompt?.let { prompt ->
                         TvTextPrompt(
-                            title = stringResource(R.string.category_new_title),
+                            title = prompt.title,
                             hint = stringResource(R.string.category_hint),
-                            onSubmit = { viewModel.setCategory(shortcut, it) },
+                            initial = prompt.initial,
+                            // A name that cleans up to nothing (blank, or a reserved '#…') is ignored.
+                            onSubmit = { raw -> CategoryOptions.cleanName(raw)?.let(prompt.onName) },
                             onDismiss = {
-                                returnFocus()
-                                namingCategoryFor = null
+                                // Opened from a menu, the menu comes back and takes the focus.
+                                if (menuStack.isEmpty()) returnFocus()
+                                namePrompt = null
                             },
                         )
                     }
@@ -314,7 +320,7 @@ class LauncherActivity : ComponentActivity() {
             }
             backgroundAdjust?.let { backgroundIntensity = settings.backgroundIntensity() }
             backgroundAdjust = null
-            namingCategoryFor = null
+            namePrompt = null
             homeRequests++
         }
     }
@@ -465,7 +471,9 @@ class LauncherActivity : ComponentActivity() {
                 }
             } + MenuItem(getString(R.string.category_new), divider = true) {
                 closeMenus()
-                namingCategoryFor = shortcut
+                namePrompt = NamePrompt(getString(R.string.category_new_title), "") {
+                    viewModel.setCategory(shortcut, it)
+                }
             },
         )
     }
@@ -586,8 +594,77 @@ class LauncherActivity : ComponentActivity() {
                     divider = true,
                 ) { move(-1) },
                 MenuItem(getString(R.string.tab_move_right)) { move(+1) },
+            ) + categoryItems(key),
+        )
+    }
+
+    private fun defaultCategories() = listOf(getString(R.string.title_apps), getString(R.string.title_system))
+
+    /**
+     * A category tab can also be renamed, and a category of the user's own deleted (its apps
+     * go back to Apps or System). The built-in ones can't be deleted: their apps would simply
+     * fall back into them.
+     */
+    private fun categoryItems(key: String): List<MenuItem> {
+        if (key == HomeTabs.HOME_KEY || key == HomeTabs.SOURCES_KEY) return emptyList()
+        val items = mutableListOf(
+            MenuItem(getString(R.string.category_rename), divider = true) {
+                namePrompt = NamePrompt(getString(R.string.category_rename_title), key) { name ->
+                    if (name != key) renameCategory(key, name)
+                }
+            },
+        )
+        if (key !in defaultCategories()) {
+            items += MenuItem(getString(R.string.category_delete), submenu = true) {
+                showDeleteCategoryMenu(key)
+            }
+        }
+        return items
+    }
+
+    private fun renameCategory(from: String, to: String) {
+        viewModel.renameCategory(from, to)
+        // The tab keeps its place, visibility and startup role under the new name.
+        tabOrder = HomeTabs.renameKey(tabOrder, from, to).also(settings::setTabOrder)
+        hiddenTabs = HomeTabs.renameKey(hiddenTabs.toList(), from, to).toSet().also(settings::setHiddenTabs)
+        if (startupTab == from) {
+            startupTab = to
+            settings.setStartupTab(to)
+        }
+        // This tab's menu is about the old name: step back to the tab list, on the renamed row.
+        leaveTabMenu(focusOn = to)
+    }
+
+    private fun showDeleteCategoryMenu(category: String) = openMenu {
+        MenuSpec(
+            title = getString(R.string.category_delete_title, category),
+            items = listOf(
+                MenuItem(
+                    getString(R.string.category_delete_confirm),
+                    value = resources.getQuantityString(
+                        R.plurals.category_app_count, viewModel.appCount(category), viewModel.appCount(category),
+                    ),
+                ) {
+                    viewModel.deleteCategory(category)
+                    tabOrder = (tabOrder - category).also(settings::setTabOrder)
+                    hiddenTabs = (hiddenTabs - category).also(settings::setHiddenTabs)
+                    if (startupTab == category) {
+                        startupTab = HomeTabs.HOME_KEY
+                        settings.setStartupTab(null)
+                    }
+                    menuStack.removeAt(menuStack.lastIndex) // the confirmation
+                    leaveTabMenu(focusOn = null)
+                },
+                MenuItem(getString(android.R.string.cancel)) { menuStack.removeAt(menuStack.lastIndex) },
             ),
         )
+    }
+
+    /** Pops a category tab's own menu, back to the Tabs list, focused on [focusOn] if given. */
+    private fun leaveTabMenu(focusOn: String?) {
+        if (menuStack.size > 1) menuStack.removeAt(menuStack.lastIndex)
+        val tabsTitle = getString(R.string.action_tabs)
+        if (focusOn != null) menuFocus[tabsTitle] = focusOn else menuFocus.remove(tabsTitle)
     }
 
     private fun installedVersion(): String? = runCatching {

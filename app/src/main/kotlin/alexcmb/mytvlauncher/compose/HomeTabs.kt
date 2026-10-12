@@ -59,6 +59,14 @@ object HomeTabs {
     }
 
     /**
+     * Saved tab keys after the category [from] was renamed [to]: its place in the order (or
+     * its hidden / startup state) carries over. Renaming onto an existing category merges
+     * the two, so a duplicate key is dropped and the first place kept.
+     */
+    fun renameKey(keys: List<String>, from: String, to: String): List<String> =
+        keys.map { if (it == from) to else it }.distinct()
+
+    /**
      * The new [order] after moving [key] one place left (delta -1) or right (+1) among [keys],
      * the current order of the movable tabs. Moving past either end changes nothing.
      */

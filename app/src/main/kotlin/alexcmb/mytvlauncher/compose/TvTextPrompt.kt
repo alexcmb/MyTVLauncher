@@ -25,8 +25,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -35,9 +37,16 @@ private val Panel = Color(0xF0202020)
 
 /** A single-field prompt matching [TvMenu]; the keyboard comes up with it. */
 @Composable
-fun TvTextPrompt(title: String, hint: String, onSubmit: (String) -> Unit, onDismiss: () -> Unit) {
+fun TvTextPrompt(
+    title: String,
+    hint: String,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+    initial: String = "",
+) {
     BackHandler(onBack = onDismiss)
-    var text by remember { mutableStateOf("") }
+    // Cursor after any starting text, so a rename can be edited from the end.
+    var text by remember { mutableStateOf(TextFieldValue(initial, TextRange(initial.length))) }
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) { field.requestFocus() }
 
@@ -65,7 +74,7 @@ fun TvTextPrompt(title: String, hint: String, onSubmit: (String) -> Unit, onDism
                     .border(2.dp, LocalAccent.current, RoundedCornerShape(6.dp))
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                if (text.isEmpty()) {
+                if (text.text.isEmpty()) {
                     Text(hint, color = Color.White.copy(alpha = 0.5f), fontSize = 18.sp)
                 }
                 BasicTextField(
@@ -77,7 +86,7 @@ fun TvTextPrompt(title: String, hint: String, onSubmit: (String) -> Unit, onDism
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     // A blank name would create a nameless row; just close instead.
                     keyboardActions = KeyboardActions(onDone = {
-                        val name = text.trim()
+                        val name = text.text.trim()
                         onDismiss()
                         if (name.isNotEmpty()) onSubmit(name)
                     }),

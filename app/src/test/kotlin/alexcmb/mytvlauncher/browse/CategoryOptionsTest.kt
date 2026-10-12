@@ -42,4 +42,16 @@ class CategoryOptionsTest {
             CategoryOptions.candidates("Apps", listOf("Apps"), defaults, presets)
         assertEquals(listOf("System", "Streaming", "Games", "Music", "Utilities"), candidates)
     }
+
+    @Test
+    fun `a typed name is trimmed and its inner spaces collapsed`() {
+        assertEquals("Jeux vidéo", CategoryOptions.cleanName("  Jeux   vidéo "))
+    }
+
+    @Test
+    fun `blank names and names that look like a built-in tab key are refused`() {
+        assertEquals(null, CategoryOptions.cleanName("   "))
+        assertEquals(null, CategoryOptions.cleanName("#home"))
+        assertEquals("Kids #1", CategoryOptions.cleanName("Kids #1"))
+    }
 }
