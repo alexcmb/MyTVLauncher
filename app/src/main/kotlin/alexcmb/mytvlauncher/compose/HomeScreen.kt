@@ -87,6 +87,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1103,8 +1104,10 @@ private fun BoxScope.CardLabel(title: String) {
 @Composable
 private fun rememberClockValues(options: ClockOptions): ClockValues {
     val context = LocalContext.current
-    val locale = Locale.getDefault()
-    val timeFormat = remember(context, options.seconds) {
+    // From Compose, not Locale.getDefault(): the clock then follows a change of the TV's
+    // language without a restart.
+    val locale = LocalLocale.current.platformLocale
+    val timeFormat = remember(context, options.seconds, locale) {
         val is24 = android.text.format.DateFormat.is24HourFormat(context)
         val skeleton = (if (is24) "Hm" else "hm") + (if (options.seconds) "s" else "")
         SimpleDateFormat(
