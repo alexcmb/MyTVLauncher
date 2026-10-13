@@ -58,6 +58,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -84,9 +85,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -273,12 +274,11 @@ fun HomeScreen(
                     tabs, selectedTab, clock, tabsFocus, homeTabFocus, onSettings,
                     Modifier.onFocusChanged { topBarFocused = it.hasFocus },
                 ) { selectedKey = tabs[it].key; focused = null }
-                // The hero band reserves room for a focused app's name. On the hub its top rows
-                // (now-playing, widgets) focus no app, so collapse it there to hand that space to
-                // the content — otherwise a now-playing card plus this empty band push the
-                // favourites row off the bottom. Other tabs keep it fixed to avoid a jump.
+                // The hero band reserves room for a focused app's name on the grid tabs. The hub
+                // has none: it names the focused favourite right above its row instead, in a
+                // header of fixed height, so its centred content never jumps as focus moves.
                 val heroHeight by animateDpAsState(
-                    targetValue = if (selectedTab == 0 && focused == null) 0.dp else 64.dp,
+                    targetValue = if (selectedTab == 0) 0.dp else 64.dp,
                     label = "hero",
                 )
                 Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount, heroHeight)
@@ -302,6 +302,9 @@ fun HomeScreen(
                         onWidgetsFocused = { focused = null },
                         favouritesState = favouritesState,
                         favouritesMemory = listMemory.getOrPut(tab.title) { FocusMemory() },
+                        focused = focused,
+                        allApps = tab.shortcuts,
+                        showUsageCount = showUsageCount,
                     )
                     tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
                     tab is AppsTab -> AppsGrid(
@@ -419,23 +422,29 @@ private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean, height: Dp) {
     Column(Modifier.fillMaxWidth().height(height).padding(start = 48.dp)) {
-        if (focused != null) {
-            Text(focused.title, color = Color.White, fontSize = 22.sp)
-            if (showUsageCount) {
-                // The usage rank, whatever order the grid is sorted in.
-                val rank = inTab.sortedByDescending { it.openCount }.indexOf(focused) + 1
-                val opens = focused.openCount
-                Text(
-                    text = when {
-                        opens == 0 -> stringResource(R.string.home_never_opened)
-                        rank == 1 -> stringResource(R.string.home_opens_top, opens)
-                        else -> stringResource(R.string.home_opens_ranked, opens, rank)
-                    },
-                    color = Muted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
+        if (focused != null) HeroText(focused, inTab, showUsageCount)
+    }
+}
+
+/** The focused app's name and, if enabled, how much it's used. */
+@Composable
+private fun HeroText(focused: Shortcut, inTab: List<Shortcut>, showUsageCount: Boolean) {
+    Column {
+        Text(focused.title, color = Color.White, fontSize = 22.sp)
+        if (showUsageCount) {
+            // The usage rank, whatever order the grid is sorted in.
+            val rank = inTab.sortedByDescending { it.openCount }.indexOf(focused) + 1
+            val opens = focused.openCount
+            Text(
+                text = when {
+                    opens == 0 -> stringResource(R.string.home_never_opened)
+                    rank == 1 -> stringResource(R.string.home_opens_top, opens)
+                    else -> stringResource(R.string.home_opens_ranked, opens, rank)
+                },
+                color = Muted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }
@@ -458,6 +467,9 @@ private fun Hub(
     onWidgetsFocused: () -> Unit,
     favouritesState: LazyListState,
     favouritesMemory: FocusMemory,
+    focused: Shortcut?,
+    allApps: List<Shortcut>,
+    showUsageCount: Boolean,
 ) {
     // As focus moves down to the apps, the widgets slide up and fade and the app cards
     // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
@@ -478,19 +490,27 @@ private fun Hub(
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    val density = LocalDensity.current
-    val bandRisePx = remember(widgets) {
-        if (widgets.isEmpty()) 0f
-        else with(density) { (widgets.maxOf { it.heightDp } + 24).dp.toPx() }
-    }
+    // Heights of what sits above the favourites (now-playing card, widget band), as laid
+    // out. When the focus goes down to the favourites those fade and slide away, and the row
+    // rises by half their height: the hub is centred, so that puts the row in the middle.
+    var nowPlayingHeight by remember { mutableIntStateOf(0) }
+    var bandHeight by remember { mutableIntStateOf(0) }
+    val abovePx = (if (nowPlaying != null) nowPlayingHeight else 0) +
+        (if (widgets.isNotEmpty()) bandHeight else 0)
     // Slimmer favourites at rest so the shorter (16:9) row keeps clear of the screen's bottom
     // edge, which TV overscan can eat into. They grow back to full size as the band collapses
     // and the row rises into the freed space, where there's plenty of room.
     val restFavouriteWidth = (cardSize.favouriteWidthDp - 40).dp
-    val cardWidth = lerp(restFavouriteWidth, (cardSize.favouriteWidthDp + 60).dp, collapse)
+    val fullFavouriteWidth = (cardSize.favouriteWidthDp + 60).dp
+    // With no widgets the row is the whole hub: full-size cards from the start.
+    val cardWidth = if (widgets.isEmpty()) fullFavouriteWidth
+    else lerp(restFavouriteWidth, fullFavouriteWidth, collapse)
 
     Column(
         Modifier
+            // The hub's rows sit as one block, centred in the space under the tabs: with few
+            // rows (no widgets) it no longer clings to the top and leaves the screen empty.
+            .fillMaxSize()
             // No horizontal padding on the group itself: the scrollable favourites row needs
             // its clip bounds out at the screen edge so a focused card can scale up without
             // being clipped. The 48dp margin is applied per child instead.
@@ -516,6 +536,7 @@ private fun Hub(
                     false
                 }
             },
+        verticalArrangement = Arrangement.Center,
     ) {
         if (nowPlaying != null) {
             NowPlayingCard(
@@ -533,10 +554,11 @@ private fun Hub(
                 },
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
+                    .onSizeChanged { nowPlayingHeight = it.height }
                     .padding(bottom = 12.dp)
                     .graphicsLayer {
                         alpha = 1f - collapse
-                        translationY = -collapse * bandRisePx
+                        translationY = -collapse * abovePx
                     },
             )
         }
@@ -544,9 +566,10 @@ private fun Hub(
             val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
             val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
             val endTiles = widgets.filter { it.alignment == WidgetAlignment.END }
-            Row(
+            WidgetBand(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onSizeChanged { bandHeight = it.height }
                     .onFocusChanged {
                         if (it.hasFocus) {
                             appsFocused = false
@@ -558,17 +581,15 @@ private fun Hub(
                     }
                     .graphicsLayer {
                         alpha = 1f - collapse
-                        translationY = -collapse * bandRisePx
+                        translationY = -collapse * abovePx
                     }
                     .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
             ) {
-                // Three equal thirds; each zone is centred in its own, so a CENTER widget sits
-                // at screen centre and START/END sit centred on their sides. Widgets render at
-                // their real chosen size — pick a size that fits if the band gets crowded.
+                // Always three zones, in this order (an empty one takes no room): see WidgetBand.
                 val onFocused = { id: Int -> focusedWidget = id }
-                WidgetSlot(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
-                WidgetSlot(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
-                WidgetSlot(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress, Modifier.weight(1f))
+                WidgetZone(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                WidgetZone(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                WidgetZone(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
             }
         }
         // Pinning or moving a favourite reorders the row under the user's feet: keep the card
@@ -590,19 +611,28 @@ private fun Hub(
                     .onFocusChanged { if (it.hasFocus) appsFocused = true }
                     // Rise into the space the widgets vacate; dim under the widget spotlight.
                     .graphicsLayer {
-                        translationY = -collapse * bandRisePx
+                        translationY = -collapse * abovePx / 2f
                         alpha = 1f - 0.75f * spotlight
                     },
             ) {
-                // "Favourites" once the user has pinned something; until then it's honestly
-                // just the most used.
+                // The row's header: the focused favourite's name (the hub has no hero band), else
+                // the row's title — "Favourites" once something is pinned, until then honestly
+                // just the most used. A fixed height, so the centred hub never shifts.
                 val pinnedAny = favourites.any { it.id in pinned }
-                Text(
-                    text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
-                    color = Muted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(start = 48.dp, bottom = 8.dp),
-                )
+                Box(
+                    modifier = Modifier.height(56.dp).padding(start = 48.dp),
+                    contentAlignment = Alignment.BottomStart,
+                ) {
+                    if (focused != null && focused in favourites) {
+                        HeroText(focused, allApps, showUsageCount)
+                    } else {
+                        Text(
+                            text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
+                            color = Muted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
                 // contentPadding, not an outer margin, so the row clips at the screen edge and
                 // the end cards can scale up on focus without their border being truncated. The
                 // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
@@ -610,8 +640,9 @@ private fun Hub(
                 LazyRow(
                     state = favouritesState,
                     contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.rememberFocus(favouritesMemory),
+                    // Centred when the cards fit (few apps); from the left edge once it scrolls.
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    modifier = Modifier.fillMaxWidth().rememberFocus(favouritesMemory),
                 ) {
                     items(favourites, key = { it.id }) { shortcut ->
                         AppCard(
@@ -628,38 +659,27 @@ private fun Hub(
 }
 
 /**
- * One third of the band. Its zone is measured unbounded so a tile keeps its true size — a
- * plain size() would be clamped by the third's width, which silently cropped every widget
- * wider than it. A zone that fits is centred in its third; one that overflows is anchored to
- * its side (START left, END right) so it grows over free space, never past the screen edge.
+ * The widget band. Its three zones (START, CENTER, END — always given in that order) line up
+ * with the rest of the hub: START on the content's left edge, the same as the favourites'
+ * first card, END on its right edge, CENTER on the screen's centre — nudged aside only if it
+ * would run into a side zone. Zones are measured unbounded so a widget keeps its true size,
+ * and are centred on each other vertically, so a short widget sits level with a tall one.
  */
 @Composable
-private fun WidgetSlot(
-    tiles: List<WidgetTile>,
-    spotlight: Float,
-    focusedWidget: Int?,
-    onFocused: (Int) -> Unit,
-    onLongPress: (Int) -> Unit,
-    modifier: Modifier,
-) {
-    val alignment = tiles.firstOrNull()?.alignment
-    Box(
-        modifier.layout { measurable, constraints ->
-            val placeable = measurable.measure(
-                constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity)
-            )
-            val width = constraints.maxWidth
-            val x = when {
-                placeable.width <= width -> (width - placeable.width) / 2
-                alignment == WidgetAlignment.START -> 0
-                alignment == WidgetAlignment.END -> width - placeable.width
-                else -> (width - placeable.width) / 2
-            }
-            layout(width, placeable.height) { placeable.placeRelative(x, 0) }
-        }
-    ) {
-        if (tiles.isNotEmpty()) {
-            WidgetZone(tiles, spotlight, focusedWidget, onFocused, onLongPress)
+private fun WidgetBand(modifier: Modifier, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gap = 16.dp.roundToPx()
+        val loose = constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity, minHeight = 0)
+        val (start, center, end) = measurables.map { it.measure(loose) }
+        val width = constraints.maxWidth
+        val height = maxOf(start.height, center.height, end.height)
+        val centreX = ((width - center.width) / 2)
+            .coerceAtLeast(if (start.width > 0) start.width + gap else 0)
+            .coerceAtMost(width - center.width - if (end.width > 0) end.width + gap else 0)
+        layout(width, height) {
+            start.placeRelative(0, (height - start.height) / 2)
+            center.placeRelative(centreX, (height - center.height) / 2)
+            end.placeRelative(width - end.width, (height - end.height) / 2)
         }
     }
 }
