@@ -11,6 +11,7 @@ import alexcmb.mytvlauncher.repository.WallpaperFit
 import alexcmb.mytvlauncher.source.TvSource
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -18,6 +19,8 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -35,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -112,6 +116,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.Card
 import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -648,7 +653,7 @@ private fun Hub(
                 // or the row clips the top/bottom edges and the card loses its rounded corners.
                 LazyRow(
                     state = favouritesState,
-                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 12.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 20.dp),
                     // Centred when the cards fit (few apps); from the left edge once it scrolls.
                     horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                     modifier = Modifier.fillMaxWidth().rememberFocus(favouritesMemory),
@@ -859,8 +864,9 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
     var focused by remember { mutableStateOf(false) }
     Card(
         onClick = { onOpen(source) },
-        scale = CardDefaults.scale(focusedScale = 1.08f),
+        scale = CardDefaults.scale(focusedScale = 1f),
         shape = CardDefaults.shape(CardShape),
+        glow = focusGlow(),
         colors = CardDefaults.colors(
             containerColor = Color.Transparent,
             focusedContainerColor = Color.Transparent,
@@ -870,6 +876,7 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
         ),
         modifier = Modifier
             .trackFocus()
+            .focusLift(focused)
             .aspectRatio(16f / 9f)
             .onFocusChanged {
                 focused = it.isFocused
@@ -1079,17 +1086,24 @@ private fun AppCard(
     modifier: Modifier,
     pinned: Boolean = false,
 ) {
+    var isFocused by remember { mutableStateOf(false) }
     Card(
         onClick = { onLaunch(shortcut) },
         onLongClick = { onLongPress(shortcut) },
-        scale = CardDefaults.scale(focusedScale = 1.08f),
+        // The lift is ours (focusLift), sprung; the card's own tween scale is turned off.
+        scale = CardDefaults.scale(focusedScale = 1f),
         shape = CardDefaults.shape(CardShape),
         border = CardDefaults.border(
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
         ),
+        glow = focusGlow(),
         modifier = modifier
+            .focusLift(isFocused)
             .aspectRatio(16f / 9f)
-            .onFocusChanged { if (it.isFocused) onFocus(shortcut) },
+            .onFocusChanged {
+                isFocused = it.isFocused
+                if (it.isFocused) onFocus(shortcut)
+            },
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             val banner = shortcut.banner
@@ -1108,8 +1122,17 @@ private fun AppCard(
                     CardLabel(shortcut.title)
                 }
             } else {
-                // No banner: the icon needs its name regardless of the setting.
-                shortcut.icon?.let { DrawableImage(it, Modifier.size(64.dp), ContentScale.Fit) }
+                // No banner: a card made from the icon itself — its colours, blurred, behind
+                // the sharp icon. The name shows regardless of the setting.
+                shortcut.icon?.let { icon ->
+                    IconBackdrop(icon, Modifier.fillMaxSize())
+                    // Sized to the card (grid cards are smaller than favourites), above the name.
+                    DrawableImage(
+                        icon,
+                        Modifier.fillMaxHeight(0.55f).aspectRatio(1f).offset(y = (-6).dp),
+                        ContentScale.Fit,
+                    )
+                }
                 CardLabel(shortcut.title)
             }
             // The glass's light over the banner: a sheen from the top and a bright edge.
@@ -1210,6 +1233,64 @@ private suspend fun paletteAccent(drawable: Drawable): Color? = withContext(Disp
         (palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.dominantSwatch)
             ?.let { Color(it.rgb) }
     }.getOrNull()
+}
+
+/**
+ * How a focused card rises: to 1.08 on a spring with a little overshoot, so moving along a
+ * row feels alive rather than mechanical (tv-material's own scale is a plain tween).
+ */
+@Composable
+private fun Modifier.focusLift(focused: Boolean): Modifier {
+    val lift by animateFloatAsState(
+        targetValue = if (focused) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
+        label = "lift",
+    )
+    return graphicsLayer { scaleX = lift; scaleY = lift }
+}
+
+/** A soft halo of the accent colour under the focused card. */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun focusGlow() = CardDefaults.glow(
+    focusedGlow = Glow(elevationColor = LocalAccent.current.copy(alpha = 0.75f), elevation = 18.dp),
+)
+
+/**
+ * The backdrop of a banner-less app's card: its icon shrunk to a few pixels and stretched
+ * back out — the bilinear filter smooths that into a soft field of the icon's colours, a blur
+ * that needs no RenderEffect (Android 12+). Over a darkened tint of the icon's main colour, so
+ * transparent icons still give a coloured card, and under a scrim that keeps the name legible.
+ * Made once per icon.
+ */
+@Composable
+private fun IconBackdrop(icon: Drawable, modifier: Modifier) {
+    val backdrop = remember(icon) {
+        val small = icon.toBitmap(48, 48)
+        val tint = runCatching {
+            Palette.Builder(small).generate().let { it.vibrantSwatch ?: it.dominantSwatch }?.rgb
+        }.getOrNull()?.let { Color(it) } ?: Color(0xFF2A2C38)
+        val field = Bitmap.createScaledBitmap(small, 5, 5, true).asImageBitmap()
+        tint to field
+    }
+    val (tint, field) = backdrop
+    Box(modifier.background(blendColor(tint, Color.Black, 0.45f))) {
+        Image(
+            bitmap = field,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            alpha = 0.85f,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.15f),
+                    1f to Color.Black.copy(alpha = 0.6f),
+                )
+            )
+        )
+    }
 }
 
 /**
