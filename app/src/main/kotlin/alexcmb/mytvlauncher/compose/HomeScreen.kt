@@ -13,6 +13,7 @@ import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.os.SystemClock
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
@@ -193,6 +194,7 @@ fun HomeScreen(
     startupTab: String,
     homeRequests: Int,
     pinnedApps: List<String>,
+    contentHidden: Boolean = false,
 ) {
     // The selection is held by key, not position, so a tab moved, hidden or added in front
     // doesn't silently switch to another one. A key that's gone (hidden) falls back to the hub.
@@ -281,7 +283,13 @@ fun HomeScreen(
                 BackgroundStyle.AURORA -> AuroraBackdrop(accentColor, intensity)
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
             }
-            Column(Modifier.fillMaxSize()) {
+            // Sleep mode fades the controls away and leaves the background on its own.
+            val contentAlpha by animateFloatAsState(
+                targetValue = if (contentHidden) 0f else 1f,
+                animationSpec = tween(durationMillis = if (contentHidden) 800 else 250),
+                label = "content",
+            )
+            Column(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
                 TopBar(
                     tabs, selectedTab, clock, tabsFocus, homeTabFocus, onSettings,
                     Modifier.onFocusChanged { topBarFocused = it.hasFocus },
@@ -978,72 +986,115 @@ private fun NowPlayingCard(
             .trackFocus()
             .onFocusChanged { onFocusChanged(it.isFocused) },
     ) {
-        Row(
-            modifier = Modifier
-                .height(52.dp)
+        // The cover's own colour washes the glass from the left, so the card belongs to what's
+        // playing; the accent until the cover's colour is known (or if there's no cover).
+        val coverTint by produceState<Color?>(null, nowPlaying.art) {
+            value = nowPlaying.art?.let { paletteColour(it) }
+        }
+        val tint = coverTint ?: LocalAccent.current
+        Box(
+            Modifier
                 .glass(CardShape, opacity = 0.5f)
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .background(
+                    Brush.horizontalGradient(listOf(tint.copy(alpha = 0.35f), Color.Transparent)),
+                    CardShape,
+                ),
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Background),
-                contentAlignment = Alignment.Center,
+                    .height(52.dp)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                val art = nowPlaying.art
-                if (art != null) {
-                    Image(
-                        bitmap = art.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_music_note),
-                        contentDescription = null,
-                        tint = Muted,
-                        modifier = Modifier.size(22.dp),
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Background),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val art = nowPlaying.art
+                    if (art != null) {
+                        Image(
+                            bitmap = art.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_music_note),
+                            contentDescription = null,
+                            tint = Muted,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
-            }
-            // Wraps its text so the card is only as wide as it needs, capped so a very long
-            // title ellipsizes instead of stretching the card across the screen.
-            Column(modifier = Modifier.widthIn(max = 360.dp)) {
-                Text(
-                    text = stringResource(R.string.now_playing).uppercase(),
-                    color = LocalAccent.current,
-                    fontSize = 9.sp,
-                )
-                Text(
-                    text = nowPlaying.title,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                nowPlaying.subtitle?.let {
+                // Wraps its text so the card is only as wide as it needs, capped so a very long
+                // title ellipsizes instead of stretching the card across the screen.
+                Column(modifier = Modifier.widthIn(max = 360.dp)) {
                     Text(
-                        text = it,
-                        color = Muted,
-                        fontSize = 11.sp,
+                        text = stringResource(R.string.now_playing).uppercase(),
+                        color = LocalAccent.current,
+                        fontSize = 9.sp,
+                    )
+                    Text(
+                        text = nowPlaying.title,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    nowPlaying.subtitle?.let {
+                        Text(
+                            text = it,
+                            color = Muted,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                Icon(
+                    painter = painterResource(
+                        if (nowPlaying.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+                    ),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+            // Progress along the bottom edge, when the app gives a duration. Sessions report the
+            // position only on changes, so it's moved on locally, once a second while playing.
+            val progress by produceState(nowPlaying.progressAt(SystemClock.elapsedRealtime()), nowPlaying) {
+                while (true) {
+                    value = nowPlaying.progressAt(SystemClock.elapsedRealtime())
+                    if (!nowPlaying.isPlaying) break
+                    delay(1000)
                 }
             }
-            Icon(
-                painter = painterResource(
-                    if (nowPlaying.isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-                ),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp),
-            )
+            progress?.let { fraction ->
+                Box(Modifier.matchParentSize().padding(horizontal = 10.dp)) {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(bottom = 4.dp)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(Color.White.copy(alpha = 0.15f), CircleShape),
+                    )
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(bottom = 4.dp)
+                            .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                            .height(3.dp)
+                            .background(tint, CircleShape),
+                    )
+                }
+            }
         }
     }
 }
@@ -1249,14 +1300,20 @@ private fun rememberAutoAccent(focused: Shortcut?, fallback: Color): Color {
     return accent
 }
 
-/** Palette runs off the main thread; it down-samples internally, so this stays cheap. */
-private suspend fun paletteAccent(drawable: Drawable): Color? = withContext(Dispatchers.Default) {
+/**
+ * The dominant lively colour of a picture (a cover, an app's banner), worked out off the main
+ * thread; Palette down-samples internally, so this stays cheap.
+ */
+private suspend fun paletteColour(bitmap: Bitmap): Color? = withContext(Dispatchers.Default) {
     runCatching {
-        val palette = Palette.Builder(drawable.toBitmap()).resizeBitmapArea(64 * 64).generate()
+        val palette = Palette.Builder(bitmap).resizeBitmapArea(64 * 64).generate()
         (palette.vibrantSwatch ?: palette.lightVibrantSwatch ?: palette.dominantSwatch)
             ?.let { Color(it.rgb) }
     }.getOrNull()
 }
+
+/** The same for an app's artwork. */
+private suspend fun paletteAccent(drawable: Drawable): Color? = paletteColour(drawable.toBitmap())
 
 /**
  * How a focused card rises: to 1.08 on a spring with a little overshoot, so moving along a

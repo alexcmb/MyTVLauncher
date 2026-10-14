@@ -10,6 +10,9 @@
     <string name="home_never_opened">Jamais ouverte</string>
     <string name="action_settings">Paramètres</string>
     <string name="action_appearance">Apparence</string>
+    <string name="ambient_mode">Mode veille</string>
+    <string name="ambient_off">Désactivé</string>
+    <string name="ambient_minutes">%d min</string>
     <string name="action_clock">Horloge</string>
     <string name="action_background">Fond</string>
     <string name="action_card_size">Taille des cartes</string>

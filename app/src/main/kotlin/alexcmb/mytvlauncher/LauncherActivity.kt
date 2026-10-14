@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher
 
 import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
+import alexcmb.mytvlauncher.compose.AmbientScreen
 import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
@@ -47,8 +48,10 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
@@ -56,6 +59,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -63,13 +70,18 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -147,6 +159,12 @@ class LauncherActivity : ComponentActivity() {
     private var pinnedApps by mutableStateOf<List<String>>(emptyList())
     private var appSort by mutableStateOf(AppSort.USAGE)
     private var appOrder by mutableStateOf<List<String>>(emptyList())
+    // Sleep mode: shown after ambientMinutes without input (0 = never). lastInputAt is
+    // uptimeMillis of the last key; swallowKeyUp eats the release of the key that woke it.
+    private var ambient by mutableStateOf(false)
+    private var ambientMinutes by mutableStateOf(SettingsRepository.AMBIENT_DEFAULT)
+    private var lastInputAt = SystemClock.uptimeMillis()
+    private var swallowKeyUp = false
     // Bumped on each HOME press; the home screen goes back to the startup tab when it changes.
     private var homeRequests by mutableStateOf(0)
 
@@ -172,6 +190,8 @@ class LauncherActivity : ComponentActivity() {
         pinnedApps = settings.pinnedApps()
         appSort = settings.appSort()
         appOrder = settings.appOrder()
+        ambientMinutes = settings.ambientMinutes()
+        watchForIdle()
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -200,7 +220,7 @@ class LauncherActivity : ComponentActivity() {
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
             // Outfit and the tv-material theme for everything: home, menus, prompts, sliders.
             LauncherTheme {
-                Box {
+                Box(Modifier.onPreviewKeyEvent { onAnyKey(it.nativeKeyEvent) }) {
                     HomeScreen(
                         tabs = tabs,
                         widgets = widgets,
@@ -226,6 +246,7 @@ class LauncherActivity : ComponentActivity() {
                         startupTab = startupTab,
                         homeRequests = homeRequests,
                         pinnedApps = pinnedApps,
+                        contentHidden = ambient,
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
@@ -302,6 +323,13 @@ class LauncherActivity : ComponentActivity() {
                             },
                         )
                     }
+                    AnimatedVisibility(
+                        visible = ambient,
+                        enter = fadeIn(tween(800)),
+                        exit = fadeOut(tween(250)),
+                    ) {
+                        AmbientScreen(nowPlaying)
+                    }
                 }
             }
             }
@@ -310,6 +338,9 @@ class LauncherActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // Back from an app: count from now, so sleep mode doesn't greet the user straight away.
+        lastInputAt = SystemClock.uptimeMillis()
+        ambient = false
         widgetSlot.startListening()
         sourceController.startListening()
         nowPlayingController.startListening()
@@ -332,7 +363,48 @@ class LauncherActivity : ComponentActivity() {
             backgroundAdjust?.let { backgroundIntensity = settings.backgroundIntensity() }
             backgroundAdjust = null
             namePrompt = null
+            ambient = false
             homeRequests++
+        }
+    }
+
+    /**
+     * Every key resets the idle clock. While sleep mode is up, the key that wakes the launcher
+     * only does that: it (and its release) is swallowed, so it can't also open the focused app.
+     * Called from the root of the screen, ahead of everything below it (widgets included).
+     */
+    private fun onAnyKey(event: KeyEvent): Boolean {
+        lastInputAt = SystemClock.uptimeMillis()
+        if (ambient && event.action == KeyEvent.ACTION_DOWN) {
+            ambient = false
+            swallowKeyUp = true
+            return true
+        }
+        if (swallowKeyUp) {
+            if (event.action == KeyEvent.ACTION_UP) swallowKeyUp = false
+            return true
+        }
+        return false
+    }
+
+    /**
+     * Shows sleep mode once the launcher has sat [ambientMinutes] without input, checked every
+     * few seconds while it's in front. Never over an open menu, slider or prompt — someone is
+     * in the middle of something there.
+     */
+    private fun watchForIdle() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    delay(IDLE_CHECK_MS)
+                    val busy = menuStack.isNotEmpty() || resizing != null ||
+                        backgroundAdjust != null || namePrompt != null
+                    val idleMs = SystemClock.uptimeMillis() - lastInputAt
+                    if (ambientMinutes > 0 && !ambient && !busy && idleMs >= ambientMinutes * 60_000L) {
+                        ambient = true
+                    }
+                }
+            }
         }
     }
 
@@ -842,7 +914,28 @@ class LauncherActivity : ComponentActivity() {
                 ) { showCardSizeMenu() },
                 MenuItem(getString(R.string.action_display), submenu = true) { showDisplayMenu() },
                 MenuItem(getString(R.string.action_clock), submenu = true) { showClockMenu() },
+                MenuItem(
+                    getString(R.string.ambient_mode),
+                    value = ambientName(ambientMinutes),
+                    submenu = true,
+                ) { showAmbientMenu() },
             ),
+        )
+    }
+
+    private fun ambientName(minutes: Int): String =
+        if (minutes == 0) getString(R.string.ambient_off) else getString(R.string.ambient_minutes, minutes)
+
+    /** Sleep mode's delay: off, or how many minutes without input before it shows. */
+    private fun showAmbientMenu() = openMenu {
+        MenuSpec(
+            title = getString(R.string.ambient_mode),
+            items = SettingsRepository.AMBIENT_CHOICES.map { minutes ->
+                MenuItem(ambientName(minutes), selected = minutes == ambientMinutes) {
+                    settings.setAmbientMinutes(minutes)
+                    ambientMinutes = minutes
+                }
+            },
         )
     }
 
@@ -1237,6 +1330,7 @@ class LauncherActivity : ComponentActivity() {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
         const val REQUEST_PICK_WALLPAPER = 2001
+        const val IDLE_CHECK_MS = 5_000L
     }
 }
 
