@@ -128,8 +128,9 @@ private fun blendColor(base: Color, tint: Color, fraction: Float): Color = Color
     alpha = 1f,
 )
 private val Muted = Color(0xFF9AA0B4)
-private val SourceSurface = Color(0xFF1C1C26)
-private val SourceSurfaceFocused = Color(0xFF2A2A38)
+// The hub's own cards (sources, now playing) are glass; app cards keep their banner and get
+// the glass's light on top. One corner radius for all of them.
+private val CardShape = RoundedCornerShape(12.dp)
 private const val FAVOURITES = 8
 
 /**
@@ -340,8 +341,12 @@ private fun TopBar(
         // A hand-rolled row rather than tv-material's TabRow: its sliding indicator
         // animation hitched on the tab change.
         if (tabs.isNotEmpty()) {
+            // The tabs sit in one floating glass pill.
             Row(
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .glass(RoundedCornerShape(99.dp), opacity = 0.4f)
+                    .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 tabs.forEachIndexed { index, tab ->
@@ -360,7 +365,10 @@ private fun TopBar(
         // Derived here so the once-a-second tick only recomposes the bar, not the screen.
         val values = rememberClockValues(clock)
         Column(
-            modifier = Modifier.align(Alignment.CenterEnd),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .glass(RoundedCornerShape(14.dp), opacity = 0.4f)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.End,
         ) {
             values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
@@ -406,6 +414,7 @@ private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clickable { onSettings() }
+            .glass(CircleShape, opacity = 0.4f)
             .background(if (focused) LocalAccent.current else Color.Transparent, CircleShape)
             .padding(8.dp),
     ) {
@@ -847,12 +856,14 @@ private fun SourcesGrid(
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     Card(
         onClick = { onOpen(source) },
         scale = CardDefaults.scale(focusedScale = 1.08f),
+        shape = CardDefaults.shape(CardShape),
         colors = CardDefaults.colors(
-            containerColor = SourceSurface,
-            focusedContainerColor = SourceSurfaceFocused,
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
         ),
         border = CardDefaults.border(
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
@@ -860,7 +871,10 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
         modifier = Modifier
             .trackFocus()
             .aspectRatio(16f / 9f)
-            .onFocusChanged { if (it.isFocused) onFocus() },
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            },
     ) {
         val iconTint = when {
             source.isConnected -> Color.White
@@ -868,7 +882,11 @@ private fun SourceCard(source: TvSource, onOpen: (TvSource) -> Unit, onFocus: ()
             else -> Muted
         }
         Box(
-            Modifier.fillMaxSize().alpha(if (source.isAvailable) 1f else 0.55f),
+            Modifier
+                .fillMaxSize()
+                // A touch more opaque when focused, so the lit card stands out of the glass.
+                .glass(CardShape, opacity = if (focused) 0.6f else 0.38f)
+                .alpha(if (source.isAvailable) 1f else 0.55f),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -918,9 +936,10 @@ private fun NowPlayingCard(
         onClick = onPlayPause,
         onLongClick = onOpen,
         scale = CardDefaults.scale(focusedScale = 1.04f),
+        shape = CardDefaults.shape(CardShape),
         colors = CardDefaults.colors(
-            containerColor = SourceSurface,
-            focusedContainerColor = SourceSurfaceFocused,
+            containerColor = Color.Transparent,
+            focusedContainerColor = Color.Transparent,
         ),
         border = CardDefaults.border(
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
@@ -933,6 +952,7 @@ private fun NowPlayingCard(
         Row(
             modifier = Modifier
                 .height(52.dp)
+                .glass(CardShape, opacity = 0.5f)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1063,6 +1083,7 @@ private fun AppCard(
         onClick = { onLaunch(shortcut) },
         onLongClick = { onLongPress(shortcut) },
         scale = CardDefaults.scale(focusedScale = 1.08f),
+        shape = CardDefaults.shape(CardShape),
         border = CardDefaults.border(
             focusedBorder = Border(border = BorderStroke(2.dp, LocalAccent.current))
         ),
@@ -1091,6 +1112,8 @@ private fun AppCard(
                 shortcut.icon?.let { DrawableImage(it, Modifier.size(64.dp), ContentScale.Fit) }
                 CardLabel(shortcut.title)
             }
+            // The glass's light over the banner: a sheen from the top and a bright edge.
+            Box(Modifier.fillMaxSize().glassGloss(CardShape))
             if (pinned) {
                 Icon(
                     painter = painterResource(R.drawable.ic_pin),

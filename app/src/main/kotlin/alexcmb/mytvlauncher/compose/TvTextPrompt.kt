@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
-private val Panel = Color(0xF0202020)
 
 /** A single-field prompt matching [TvMenu]; the keyboard comes up with it. */
 @Composable
@@ -51,13 +50,13 @@ fun TvTextPrompt(
     LaunchedEffect(Unit) { field.requestFocus() }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(min = 360.dp)
-                .background(Panel, RoundedCornerShape(12.dp))
+                .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
                 .padding(24.dp),
         ) {
             Text(

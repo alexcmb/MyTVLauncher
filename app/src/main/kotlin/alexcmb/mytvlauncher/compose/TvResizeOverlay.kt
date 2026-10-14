@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
-private val Panel = Color(0xF0202020)
 private val Track = Color(0xFF3A3A44)
 private val Muted = Color(0xFF9AA0B4)
 
@@ -88,7 +87,7 @@ fun TvResizeOverlay(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 40.dp)
-                .background(Panel, RoundedCornerShape(12.dp))
+                .glass(RoundedCornerShape(16.dp), opacity = 0.7f)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
