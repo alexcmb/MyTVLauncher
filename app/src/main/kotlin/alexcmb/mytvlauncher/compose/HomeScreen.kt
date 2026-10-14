@@ -273,6 +273,7 @@ fun HomeScreen(
                     // Brightness: more intensity → thinner scrim → brighter wallpaper.
                     Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
                 }
+                BackgroundStyle.AURORA -> AuroraBackdrop(accentColor, intensity)
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
             }
             Column(Modifier.fillMaxSize()) {

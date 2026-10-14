@@ -31,6 +31,7 @@
     <string name="background_ambient">Bannière ambiante</string>
     <string name="background_gradient">Dégradé d\'accent</string>
     <string name="background_solid">Uni</string>
+    <string name="background_aurora">Aurore</string>
     <string name="background_image">Choisir une image…</string>
     <string name="background_image_remove">Retirer l\'image</string>
     <string name="background_brightness">Luminosité du fond</string>

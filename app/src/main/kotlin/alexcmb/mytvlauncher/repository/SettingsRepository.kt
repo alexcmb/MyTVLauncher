@@ -33,6 +33,9 @@ enum class BackgroundStyle {
 
     /** A user-picked image, dimmed by the brightness setting. */
     WALLPAPER,
+
+    /** Soft blobs of the accent's colours, drifting slowly. */
+    AURORA,
 }
 
 /** How a wallpaper image is scaled onto the screen. */

@@ -882,6 +882,7 @@ class LauncherActivity : ComponentActivity() {
             BackgroundStyle.ACCENT_GRADIENT -> R.string.background_gradient
             BackgroundStyle.SOLID -> R.string.background_solid
             BackgroundStyle.WALLPAPER -> R.string.background_wallpaper
+            BackgroundStyle.AURORA -> R.string.background_aurora
         }
     )
 
@@ -923,6 +924,7 @@ class LauncherActivity : ComponentActivity() {
         // "Image" is only a style once there's an image to show.
         val styles = listOf(
             BackgroundStyle.AMBIENT,
+            BackgroundStyle.AURORA,
             BackgroundStyle.ACCENT_GRADIENT,
             BackgroundStyle.SOLID,
             BackgroundStyle.WALLPAPER,

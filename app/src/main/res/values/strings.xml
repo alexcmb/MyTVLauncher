@@ -32,6 +32,7 @@
     <string name="background_ambient">Ambient banner</string>
     <string name="background_gradient">Accent gradient</string>
     <string name="background_solid">Solid</string>
+    <string name="background_aurora">Aurora</string>
     <string name="background_image">Choose an image…</string>
     <string name="background_image_remove">Remove image</string>
     <string name="background_brightness">Background brightness</string>
