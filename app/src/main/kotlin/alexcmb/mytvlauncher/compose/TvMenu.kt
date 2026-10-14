@@ -108,6 +108,7 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
                 }
             }
             // Lighter than an opaque dim, so the glass panel reads as see-through.
+            .fadeInOnce()
             .background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
@@ -115,6 +116,8 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
             modifier = Modifier
                 .widthIn(min = 280.dp, max = 440.dp)
                 .heightIn(max = 480.dp)
+                // Each level pops in, so going into a submenu reads as moving somewhere.
+                .popIn(spec.title)
                 .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
                 .padding(vertical = 16.dp, horizontal = 12.dp),
         ) {

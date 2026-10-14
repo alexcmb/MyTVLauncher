@@ -87,6 +87,7 @@ fun TvResizeOverlay(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 40.dp)
+                .popIn()
                 .glass(RoundedCornerShape(16.dp), opacity = 0.7f)
                 .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

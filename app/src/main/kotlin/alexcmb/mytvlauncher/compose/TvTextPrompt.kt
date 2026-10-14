@@ -50,12 +50,13 @@ fun TvTextPrompt(
     LaunchedEffect(Unit) { field.requestFocus() }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxSize().fadeInOnce().background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(min = 360.dp)
+                .popIn()
                 .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
                 .padding(24.dp),
         ) {
@@ -80,7 +81,7 @@ fun TvTextPrompt(
                     value = text,
                     onValueChange = { text = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 18.sp),
+                    textStyle = TextStyle(color = Color.White, fontSize = 18.sp, fontFamily = Outfit),
                     cursorBrush = SolidColor(Color.White),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     // A blank name would create a nameless row; just close instead.

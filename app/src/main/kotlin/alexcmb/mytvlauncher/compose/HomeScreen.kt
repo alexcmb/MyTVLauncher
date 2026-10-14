@@ -16,6 +16,12 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -118,7 +124,6 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
-import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
 private val Background = Color(0xFF0E0E12)
@@ -234,7 +239,7 @@ fun HomeScreen(
     val accent = if (accentAuto) rememberAutoAccent(focused, base) else base
 
     CompositionLocalProvider(LocalAccent provides accent, LocalFocusTracker provides focusTracker) {
-    MaterialTheme {
+    LauncherTheme {
         // One intensity slider drives every mode: it deepens the SOLID tint, strengthens the
         // gradient wash, and brightens the wallpaper (less dim). A dark base always carries the
         // accent hue so even "solid" reads as coloured, not flat black.
@@ -289,36 +294,50 @@ fun HomeScreen(
                     label = "hero",
                 )
                 Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount, heroHeight)
-                when {
-                    tab == null -> Unit
-                    // The first tab is a hub: widgets and a few favourites, nothing endless.
-                    selectedTab == 0 && tab is AppsTab -> Hub(
-                        widgets = widgets,
-                        favourites = Favourites.pick(tab.shortcuts, pinnedApps, FAVOURITES),
-                        pinned = pinnedApps.toSet(),
-                        cardSize = cardSize,
-                        tabsFocus = tabsFocus,
-                        showAppLabels = showAppLabels,
-                        nowPlaying = nowPlaying,
-                        onLaunch = onLaunch,
-                        onLongPress = onLongPress,
-                        onWidgetLongPress = onWidgetLongPress,
-                        onPlayPause = onPlayPause,
-                        onOpenNowPlaying = onOpenNowPlaying,
-                        onFocus = { focused = it },
-                        onWidgetsFocused = { focused = null },
-                        favouritesState = favouritesState,
-                        favouritesMemory = listMemory.getOrPut(tab.title) { FocusMemory() },
-                        focused = focused,
-                        allApps = tab.shortcuts,
-                        showUsageCount = showUsageCount,
-                    )
-                    tab is SourcesTab -> SourcesGrid(tab.sources, cardSize, tabsFocus, onOpenSource)
-                    tab is AppsTab -> AppsGrid(
-                        tab.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onGridLongPress,
-                        state = gridStates.getOrPut(tab.title) { LazyGridState() },
-                        memory = listMemory.getOrPut(tab.title) { FocusMemory() },
-                    ) { focused = it }
+                // Switching tabs slides the content a little the way the focus went (right for a
+                // tab further right) and cross-fades, instead of swapping it in a single frame.
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { dir * it / 12 }) togetherWith
+                            (fadeOut(tween(140)) + slideOutHorizontally(tween(140)) { -dir * it / 12 })
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "tab",
+                ) { index ->
+                    val shown = tabs.getOrNull(index)
+                    when {
+                        shown == null -> Unit
+                        // The first tab is a hub: widgets and a few favourites, nothing endless.
+                        index == 0 && shown is AppsTab -> Hub(
+                            widgets = widgets,
+                            favourites = Favourites.pick(shown.shortcuts, pinnedApps, FAVOURITES),
+                            pinned = pinnedApps.toSet(),
+                            cardSize = cardSize,
+                            tabsFocus = tabsFocus,
+                            showAppLabels = showAppLabels,
+                            nowPlaying = nowPlaying,
+                            onLaunch = onLaunch,
+                            onLongPress = onLongPress,
+                            onWidgetLongPress = onWidgetLongPress,
+                            onPlayPause = onPlayPause,
+                            onOpenNowPlaying = onOpenNowPlaying,
+                            onFocus = { focused = it },
+                            onWidgetsFocused = { focused = null },
+                            favouritesState = favouritesState,
+                            favouritesMemory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                            focused = focused,
+                            allApps = shown.shortcuts,
+                            showUsageCount = showUsageCount,
+                        )
+                        shown is SourcesTab -> SourcesGrid(shown.sources, cardSize, tabsFocus, onOpenSource)
+                        shown is AppsTab -> AppsGrid(
+                            shown.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onGridLongPress,
+                            state = gridStates.getOrPut(shown.title) { LazyGridState() },
+                            memory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                        ) { focused = it }
+                    }
                 }
             }
         }
@@ -378,7 +397,8 @@ private fun TopBar(
             horizontalAlignment = Alignment.End,
         ) {
             values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
-            Text(values.time, color = Color.White, fontSize = 20.sp)
+            // The clock is the one big figure on the bar: large and light.
+            Text(values.time, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
             values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
         }
     }
@@ -401,7 +421,8 @@ private fun TabChip(
     Text(
         text = title,
         color = if (selected) Color.White else Muted,
-        fontSize = 13.sp,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Medium,
         modifier = modifier
             .onFocusChanged {
                 focused = it.isFocused
@@ -445,7 +466,7 @@ private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Bool
 @Composable
 private fun HeroText(focused: Shortcut, inTab: List<Shortcut>, showUsageCount: Boolean) {
     Column {
-        Text(focused.title, color = Color.White, fontSize = 22.sp)
+        Text(focused.title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
         if (showUsageCount) {
             // The usage rank, whatever order the grid is sorted in.
             val rank = inTab.sortedByDescending { it.openCount }.indexOf(focused) + 1
@@ -1160,6 +1181,7 @@ private fun BoxScope.CardLabel(title: String) {
     Text(
         text = title,
         color = Color.White,
+        fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

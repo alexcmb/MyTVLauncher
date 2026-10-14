@@ -5,6 +5,7 @@ import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
+import alexcmb.mytvlauncher.compose.LauncherTheme
 import alexcmb.mytvlauncher.compose.MenuItem
 import alexcmb.mytvlauncher.compose.MenuSpec
 import alexcmb.mytvlauncher.compose.TvMenu
@@ -197,6 +198,8 @@ class LauncherActivity : ComponentActivity() {
                 tabOrder, hiddenTabs, appSort, appOrder,
             )
             CompositionLocalProvider(LocalAccent provides Color(accent.argb)) {
+            // Outfit and the tv-material theme for everything: home, menus, prompts, sliders.
+            LauncherTheme {
                 Box {
                     HomeScreen(
                         tabs = tabs,
@@ -300,6 +303,7 @@ class LauncherActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }
