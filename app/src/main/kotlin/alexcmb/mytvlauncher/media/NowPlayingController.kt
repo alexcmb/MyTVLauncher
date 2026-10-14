@@ -12,13 +12,33 @@ import android.os.Handler
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 
-/** A snapshot of whatever is playing right now, ready to show on the hub. */
+/**
+ * A snapshot of whatever is playing right now, ready to show on the hub. The position is
+ * as of [positionAtMs] (elapsedRealtime) and moves on at [speed] while playing — sessions
+ * only report it on changes, not continuously; see [positionAt]. [durationMs] is 0 when the
+ * app doesn't say (live streams, some players).
+ */
 data class NowPlaying(
     val title: String,
     val subtitle: String?,
     val art: Bitmap?,
     val isPlaying: Boolean,
-)
+    val durationMs: Long = 0,
+    val positionMs: Long = 0,
+    val positionAtMs: Long = 0,
+    val speed: Float = 1f,
+) {
+    /** Where playback is at [nowMs] (elapsedRealtime), kept within the duration. */
+    fun positionAt(nowMs: Long): Long {
+        val moved = if (isPlaying) ((nowMs - positionAtMs) * speed).toLong() else 0L
+        val position = (positionMs + moved).coerceAtLeast(0)
+        return if (durationMs > 0) position.coerceAtMost(durationMs) else position
+    }
+
+    /** How far through it is, 0–1, or null when the duration is unknown. */
+    fun progressAt(nowMs: Long): Float? =
+        if (durationMs > 0) positionAt(nowMs).toFloat() / durationMs else null
+}
 
 /**
  * Reads the TV's active media sessions (music, video, …) through [MediaSessionManager] and
@@ -112,8 +132,18 @@ class NowPlayingController(private val context: Context) {
         val art = meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: meta.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: meta.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        val playing = c.playbackState?.state == PlaybackState.STATE_PLAYING
-        return NowPlaying(title, subtitle, art, playing)
+        val state = c.playbackState
+        val playing = state?.state == PlaybackState.STATE_PLAYING
+        return NowPlaying(
+            title = title,
+            subtitle = subtitle,
+            art = art,
+            isPlaying = playing,
+            durationMs = meta.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0),
+            positionMs = state?.position?.coerceAtLeast(0) ?: 0,
+            positionAtMs = state?.lastPositionUpdateTime ?: 0,
+            speed = state?.playbackSpeed?.takeIf { it > 0f } ?: 1f,
+        )
     }
 
     /** OK on the card: pause if playing, resume if paused. */

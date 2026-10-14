@@ -60,7 +60,6 @@ data class MenuItem(
 /** A menu to show: nesting is just replacing the spec with the next one. */
 data class MenuSpec(val title: String, val items: List<MenuItem>)
 
-private val Panel = Color(0xF0202020)
 private val Muted = Color(0xFF9AA0B4)
 
 /**
@@ -108,14 +107,18 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
                     true
                 }
             }
-            .background(Color.Black.copy(alpha = 0.6f)),
+            // Lighter than an opaque dim, so the glass panel reads as see-through.
+            .fadeInOnce()
+            .background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(min = 280.dp, max = 440.dp)
                 .heightIn(max = 480.dp)
-                .background(Panel, RoundedCornerShape(12.dp))
+                // Each level pops in, so going into a submenu reads as moving somewhere.
+                .popIn(spec.title)
+                .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
                 .padding(vertical = 16.dp, horizontal = 12.dp),
         ) {
             Text(

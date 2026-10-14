@@ -33,6 +33,9 @@ enum class BackgroundStyle {
 
     /** A user-picked image, dimmed by the brightness setting. */
     WALLPAPER,
+
+    /** Soft blobs of the accent's colours, drifting slowly. */
+    AURORA,
 }
 
 /** How a wallpaper image is scaled onto the screen. */
@@ -82,6 +85,10 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_PINNED_APPS = "pinned_apps"
         private const val KEY_APP_SORT = "app_sort"
         private const val KEY_APP_ORDER = "app_order"
+        private const val KEY_AMBIENT_MINUTES = "ambient_minutes"
+        /** Choices for sleep mode's delay, in minutes; 0 turns it off. */
+        val AMBIENT_CHOICES = listOf(0, 1, 2, 5, 10, 30)
+        const val AMBIENT_DEFAULT = 5
         // List separator. Category names are free text; a newline is the one thing they can't
         // contain (and package names never do).
         private const val TAB_SEPARATOR = "\n"
@@ -222,6 +229,12 @@ class SettingsRepository private constructor(context: Context) {
             if (ids.isEmpty()) remove(KEY_APP_ORDER)
             else putString(KEY_APP_ORDER, ids.joinToString(TAB_SEPARATOR))
         }.apply()
+
+    /** Minutes without input before sleep mode shows; 0 = never. */
+    fun ambientMinutes(): Int = sharedPreferences.getInt(KEY_AMBIENT_MINUTES, AMBIENT_DEFAULT).coerceAtLeast(0)
+
+    fun setAmbientMinutes(minutes: Int) =
+        sharedPreferences.edit().putInt(KEY_AMBIENT_MINUTES, minutes.coerceAtLeast(0)).apply()
 
     /** The key of the tab the home screen opens on (and returns to on HOME); null = the hub. */
     fun startupTab(): String? = sharedPreferences.getString(KEY_STARTUP_TAB, null)

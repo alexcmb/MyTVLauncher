@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 
-private val Panel = Color(0xF0202020)
 
 /** A single-field prompt matching [TvMenu]; the keyboard comes up with it. */
 @Composable
@@ -51,13 +50,14 @@ fun TvTextPrompt(
     LaunchedEffect(Unit) { field.requestFocus() }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxSize().fadeInOnce().background(Color.Black.copy(alpha = 0.45f)),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .widthIn(min = 360.dp)
-                .background(Panel, RoundedCornerShape(12.dp))
+                .popIn()
+                .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
                 .padding(24.dp),
         ) {
             Text(
@@ -81,7 +81,7 @@ fun TvTextPrompt(
                     value = text,
                     onValueChange = { text = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 18.sp),
+                    textStyle = TextStyle(color = Color.White, fontSize = 18.sp, fontFamily = Outfit),
                     cursorBrush = SolidColor(Color.White),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     // A blank name would create a nameless row; just close instead.
