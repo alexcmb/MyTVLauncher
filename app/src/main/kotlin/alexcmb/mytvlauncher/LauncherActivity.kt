@@ -390,15 +390,22 @@ class LauncherActivity : ComponentActivity() {
     /**
      * Shows sleep mode once the launcher has sat [ambientMinutes] without input, checked every
      * few seconds while it's in front. Never over an open menu, slider or prompt — someone is
-     * in the middle of something there.
+     * in the middle of something there — nor while something else has the window's focus.
+     *
+     * The idle clock restarts whenever the launcher comes back to the front: after an app
+     * (onStart), but also after a panel that only covered it (a settings side panel, the input
+     * picker, voice search: onResume) or an overlay that only took the focus (volume, a
+     * notification: onWindowFocusChanged). The keys pressed there never reach the launcher, so
+     * without this it would count that time as idle and fall asleep seconds after coming back.
      */
     private fun watchForIdle() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                lastInputAt = SystemClock.uptimeMillis()
                 while (true) {
                     delay(IDLE_CHECK_MS)
                     val busy = menuStack.isNotEmpty() || resizing != null ||
-                        backgroundAdjust != null || namePrompt != null
+                        backgroundAdjust != null || namePrompt != null || !hasWindowFocus()
                     val idleMs = SystemClock.uptimeMillis() - lastInputAt
                     if (ambientMinutes > 0 && !ambient && !busy && idleMs >= ambientMinutes * 60_000L) {
                         ambient = true
@@ -406,6 +413,17 @@ class LauncherActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Every key and click the activity receives (from any window of ours) restarts the idle clock.
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInputAt = SystemClock.uptimeMillis()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) lastInputAt = SystemClock.uptimeMillis()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
