@@ -4,13 +4,18 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.net.Uri
 import android.os.Handler
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 /**
  * A snapshot of whatever is playing right now, ready to show on the hub. The position is
@@ -132,6 +137,7 @@ class NowPlayingController(private val context: Context) {
         val art = meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: meta.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: meta.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+            ?: artFromUri(meta)
         val state = c.playbackState
         val playing = state?.state == PlaybackState.STATE_PLAYING
         return NowPlaying(
@@ -145,6 +151,47 @@ class NowPlayingController(private val context: Context) {
             speed = state?.playbackSpeed?.takeIf { it > 0f } ?: 1f,
         )
     }
+
+    // Many players hand the cover over as a link (content:// or https://) rather than a bitmap.
+    // It's fetched once, off the main thread, and kept; the UI is told when it arrives.
+    private val artLoader = Executors.newSingleThreadExecutor()
+    private var artUri: String? = null
+    private var artBitmap: Bitmap? = null
+
+    private fun artFromUri(meta: MediaMetadata): Bitmap? {
+        val uri = ART_URI_KEYS.firstNotNullOfOrNull { meta.getString(it)?.takeIf(String::isNotBlank) }
+            ?: return null
+        if (uri == artUri) return artBitmap
+        artUri = uri
+        artBitmap = null
+        artLoader.execute {
+            val bitmap = loadBitmap(uri)
+            handler.post {
+                if (artUri == uri && bitmap != null) {
+                    artBitmap = bitmap
+                    onChanged?.invoke()
+                }
+            }
+        }
+        return null
+    }
+
+    /** A cover from a content:// or http(s):// link, scaled down to at most ~512px. */
+    private fun loadBitmap(uri: String): Bitmap? = runCatching {
+        val parsed = Uri.parse(uri)
+        fun open() = when (parsed.scheme) {
+            "http", "https" -> (URL(uri).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 5_000
+                readTimeout = 5_000
+            }.inputStream
+            else -> context.contentResolver.openInputStream(parsed)
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        open()?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 512) sample *= 2
+        open()?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
+    }.onFailure { Log.w(TAG, "Cover not loaded", it) }.getOrNull()
 
     /** OK on the card: pause if playing, resume if paused. */
     fun playPause() {
@@ -170,5 +217,12 @@ class NowPlayingController(private val context: Context) {
         }
     }
 
-    private companion object { const val TAG = "NowPlayingController" }
+    private companion object {
+        const val TAG = "NowPlayingController"
+        val ART_URI_KEYS = listOf(
+            MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
+            MediaMetadata.METADATA_KEY_ART_URI,
+            MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI,
+        )
+    }
 }

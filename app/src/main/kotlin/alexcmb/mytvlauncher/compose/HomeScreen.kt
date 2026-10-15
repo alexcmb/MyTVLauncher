@@ -534,13 +534,12 @@ private fun Hub(
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    // Heights of what sits above the favourites (now-playing card, widget band), as laid
-    // out. When the focus goes down to the favourites those fade and slide away, and the row
-    // rises by half their height: the hub is centred, so that puts the row in the middle.
+    // Heights as laid out. When the focus goes down to the favourites, the now-playing card
+    // and the widget band fade and slide up by their own height, and the row rises by half
+    // the band's: the widgets and the row are centred together, so that puts the row in the
+    // middle of their space.
     var nowPlayingHeight by remember { mutableIntStateOf(0) }
     var bandHeight by remember { mutableIntStateOf(0) }
-    val abovePx = (if (nowPlaying != null) nowPlayingHeight else 0) +
-        (if (widgets.isNotEmpty()) bandHeight else 0)
     // Slimmer favourites at rest so the shorter (16:9) row keeps clear of the screen's bottom
     // edge, which TV overscan can eat into. They grow back to full size as the band collapses
     // and the row rises into the freed space, where there's plenty of room.
@@ -552,8 +551,9 @@ private fun Hub(
 
     Column(
         Modifier
-            // The hub's rows sit as one block, centred in the space under the tabs: with few
-            // rows (no widgets) it no longer clings to the top and leaves the screen empty.
+            // The now-playing card sits just under the tabs; the widgets and the favourites
+            // are one block centred in the rest, so with few rows (no widgets) the hub doesn't
+            // cling to the top and leave the screen empty — nor push the card down with it.
             .fillMaxSize()
             // No horizontal padding on the group itself: the scrollable favourites row needs
             // its clip bounds out at the screen edge so a focused card can scale up without
@@ -580,7 +580,6 @@ private fun Hub(
                     false
                 }
             },
-        verticalArrangement = Arrangement.Center,
     ) {
         if (nowPlaying != null) {
             NowPlayingCard(
@@ -599,102 +598,107 @@ private fun Hub(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .onSizeChanged { nowPlayingHeight = it.height }
-                    .padding(bottom = 12.dp)
+                    .padding(top = 8.dp)
                     .graphicsLayer {
                         alpha = 1f - collapse
-                        translationY = -collapse * abovePx
+                        translationY = -collapse * nowPlayingHeight
                     },
             )
         }
-        if (widgets.isNotEmpty()) {
-            val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
-            val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
-            val endTiles = widgets.filter { it.alignment == WidgetAlignment.END }
-            WidgetBand(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { bandHeight = it.height }
-                    .onFocusChanged {
-                        if (it.hasFocus) {
-                            appsFocused = false
-                            // Widgets aren't apps: drop the app backdrop back to black.
-                            onWidgetsFocused()
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            if (widgets.isNotEmpty()) {
+                val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
+                val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
+                val endTiles = widgets.filter { it.alignment == WidgetAlignment.END }
+                WidgetBand(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { bandHeight = it.height }
+                        .onFocusChanged {
+                            if (it.hasFocus) {
+                                appsFocused = false
+                                // Widgets aren't apps: drop the app backdrop back to black.
+                                onWidgetsFocused()
+                            } else {
+                                focusedWidget = null
+                            }
+                        }
+                        .graphicsLayer {
+                            alpha = 1f - collapse
+                            translationY = -collapse * bandHeight
+                        }
+                        .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
+                ) {
+                    // Always three zones, in this order (an empty one takes no room): see WidgetBand.
+                    val onFocused = { id: Int -> focusedWidget = id }
+                    WidgetZone(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                    WidgetZone(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                    WidgetZone(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                }
+            }
+            // Pinning or moving a favourite reorders the row under the user's feet: keep the card
+            // they were on in view, or it would be scrolled off — and the focus, sent back to it
+            // when the menu closes, would land nowhere.
+            val order = favourites.map { it.id }
+            LaunchedEffect(order) {
+                val index = order.indexOf(favouritesMemory.lastId)
+                if (index < 0) return@LaunchedEffect
+                val layout = favouritesState.layoutInfo
+                val shown = layout.visibleItemsInfo.any {
+                    it.index == index && it.offset >= 0 && it.offset + it.size <= layout.viewportEndOffset
+                }
+                if (!shown) favouritesState.scrollToItem(index)
+            }
+            if (favourites.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .onFocusChanged { if (it.hasFocus) appsFocused = true }
+                        // Rise into the space the widgets vacate; dim under the widget spotlight.
+                        .graphicsLayer {
+                            translationY = -collapse * bandHeight / 2f
+                            alpha = 1f - 0.75f * spotlight
+                        },
+                ) {
+                    // The row's header: the focused favourite's name (the hub has no hero band), else
+                    // the row's title — "Favourites" once something is pinned, until then honestly
+                    // just the most used. A fixed height, so the centred hub never shifts.
+                    val pinnedAny = favourites.any { it.id in pinned }
+                    Box(
+                        modifier = Modifier.height(56.dp).padding(start = 48.dp),
+                        contentAlignment = Alignment.BottomStart,
+                    ) {
+                        if (focused != null && focused in favourites) {
+                            HeroText(focused, allApps, showUsageCount)
                         } else {
-                            focusedWidget = null
+                            Text(
+                                text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
+                                color = Muted,
+                                fontSize = 12.sp,
+                            )
                         }
                     }
-                    .graphicsLayer {
-                        alpha = 1f - collapse
-                        translationY = -collapse * abovePx
-                    }
-                    .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
-            ) {
-                // Always three zones, in this order (an empty one takes no room): see WidgetBand.
-                val onFocused = { id: Int -> focusedWidget = id }
-                WidgetZone(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
-                WidgetZone(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
-                WidgetZone(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
-            }
-        }
-        // Pinning or moving a favourite reorders the row under the user's feet: keep the card
-        // they were on in view, or it would be scrolled off — and the focus, sent back to it
-        // when the menu closes, would land nowhere.
-        val order = favourites.map { it.id }
-        LaunchedEffect(order) {
-            val index = order.indexOf(favouritesMemory.lastId)
-            if (index < 0) return@LaunchedEffect
-            val layout = favouritesState.layoutInfo
-            val shown = layout.visibleItemsInfo.any {
-                it.index == index && it.offset >= 0 && it.offset + it.size <= layout.viewportEndOffset
-            }
-            if (!shown) favouritesState.scrollToItem(index)
-        }
-        if (favourites.isNotEmpty()) {
-            Column(
-                modifier = Modifier
-                    .onFocusChanged { if (it.hasFocus) appsFocused = true }
-                    // Rise into the space the widgets vacate; dim under the widget spotlight.
-                    .graphicsLayer {
-                        translationY = -collapse * abovePx / 2f
-                        alpha = 1f - 0.75f * spotlight
-                    },
-            ) {
-                // The row's header: the focused favourite's name (the hub has no hero band), else
-                // the row's title — "Favourites" once something is pinned, until then honestly
-                // just the most used. A fixed height, so the centred hub never shifts.
-                val pinnedAny = favourites.any { it.id in pinned }
-                Box(
-                    modifier = Modifier.height(56.dp).padding(start = 48.dp),
-                    contentAlignment = Alignment.BottomStart,
-                ) {
-                    if (focused != null && focused in favourites) {
-                        HeroText(focused, allApps, showUsageCount)
-                    } else {
-                        Text(
-                            text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
-                            color = Muted,
-                            fontSize = 12.sp,
-                        )
-                    }
-                }
-                // contentPadding, not an outer margin, so the row clips at the screen edge and
-                // the end cards can scale up on focus without their border being truncated. The
-                // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
-                // or the row clips the top/bottom edges and the card loses its rounded corners.
-                LazyRow(
-                    state = favouritesState,
-                    contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 20.dp),
-                    // Centred when the cards fit (few apps); from the left edge once it scrolls.
-                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                    modifier = Modifier.fillMaxWidth().rememberFocus(favouritesMemory),
-                ) {
-                    items(favourites, key = { it.id }) { shortcut ->
-                        AppCard(
-                            shortcut, showAppLabels, onLaunch, onLongPress,
-                            { favouritesMemory.lastId = it.id; onFocus(it) },
-                            Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(favouritesMemory),
-                            pinned = shortcut.id in pinned,
-                        )
+                    // contentPadding, not an outer margin, so the row clips at the screen edge and
+                    // the end cards can scale up on focus without their border being truncated. The
+                    // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
+                    // or the row clips the top/bottom edges and the card loses its rounded corners.
+                    LazyRow(
+                        state = favouritesState,
+                        contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 20.dp),
+                        // Centred when the cards fit (few apps); from the left edge once it scrolls.
+                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                        modifier = Modifier.fillMaxWidth().rememberFocus(favouritesMemory),
+                    ) {
+                        items(favourites, key = { it.id }) { shortcut ->
+                            AppCard(
+                                shortcut, showAppLabels, onLaunch, onLongPress,
+                                { favouritesMemory.lastId = it.id; onFocus(it) },
+                                Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(favouritesMemory),
+                                pinned = shortcut.id in pinned,
+                            )
+                        }
                     }
                 }
             }
@@ -1002,8 +1006,9 @@ private fun NowPlayingCard(
         ) {
             Row(
                 modifier = Modifier
-                    .height(52.dp)
-                    .padding(horizontal = 14.dp),
+                    // Room under the artist line for the progress bar.
+                    .height(62.dp)
+                    .padding(start = 14.dp, end = 14.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
