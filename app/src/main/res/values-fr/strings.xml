@@ -125,6 +125,11 @@
     <string name="background_style">Style</string>
     <string name="background_wallpaper">Image</string>
     <string name="background_image_set">Définie</string>
+    <string name="background_video">Vidéo</string>
+    <string name="background_video_pick">Choisir une vidéo…</string>
+    <string name="background_video_remove">Retirer la vidéo</string>
+    <string name="background_video_error">La TV ne peut pas lire cette vidéo (essayez un MP4 H.264 ou HEVC)</string>
+    <string name="video_fit">Cadrage de la vidéo</string>
     <string name="background_image_none">Aucune</string>
     <string name="action_hidden_apps_label">Apps masquées</string>
     <string name="widget_menu_size">Taille</string>

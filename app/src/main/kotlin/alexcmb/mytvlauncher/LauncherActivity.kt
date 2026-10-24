@@ -147,6 +147,7 @@ class LauncherActivity : ComponentActivity() {
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
     private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
     private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
+    private var backgroundVideo by mutableStateOf<Uri?>(null)
     private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
     // Live value of the background-brightness slider while it's open, else null.
     private var backgroundAdjust by mutableStateOf<Int?>(null)
@@ -180,6 +181,7 @@ class LauncherActivity : ComponentActivity() {
         background = settings.background()
         backgroundIntensity = settings.backgroundIntensity()
         wallpaperFit = settings.wallpaperFit()
+        backgroundVideo = settings.backgroundVideoUri()?.let(Uri::parse)
         loadBackgroundImage()
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
@@ -227,6 +229,7 @@ class LauncherActivity : ComponentActivity() {
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
                         backgroundImage = backgroundImage,
+                        backgroundVideo = backgroundVideo,
                         backgroundIntensity = backgroundIntensity,
                         wallpaperFit = wallpaperFit,
                         cardSize = cardSize,
@@ -450,7 +453,20 @@ class LauncherActivity : ComponentActivity() {
                 granted, data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
             )
             REQUEST_PICK_WALLPAPER -> if (granted) onWallpaperPicked(data)
+            REQUEST_PICK_VIDEO -> if (granted) onVideoPicked(data)
         }
+    }
+
+    private fun onVideoPicked(data: Intent?) {
+        val uri = data?.data ?: return
+        // Persist read access so the video survives reboots.
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        settings.setBackgroundVideoUri(uri.toString())
+        settings.setBackground(BackgroundStyle.VIDEO)
+        backgroundVideo = uri
+        background = BackgroundStyle.VIDEO
     }
 
     private fun onWallpaperPicked(data: Intent?) {
@@ -997,6 +1013,7 @@ class LauncherActivity : ComponentActivity() {
             BackgroundStyle.ACCENT_GRADIENT -> R.string.background_gradient
             BackgroundStyle.SOLID -> R.string.background_solid
             BackgroundStyle.WALLPAPER -> R.string.background_wallpaper
+            BackgroundStyle.VIDEO -> R.string.background_video
             BackgroundStyle.AURORA -> R.string.background_aurora
         }
     )
@@ -1014,6 +1031,7 @@ class LauncherActivity : ComponentActivity() {
     /** Background: what fills it (style), the image behind it, and how strongly it shows. */
     private fun showBackgroundMenu() = openMenu {
         val hasImage = settings.backgroundImageUri() != null
+        val hasVideo = backgroundVideo != null
         MenuSpec(
             title = getString(R.string.action_background),
             items = listOf(
@@ -1028,6 +1046,11 @@ class LauncherActivity : ComponentActivity() {
                     submenu = true,
                 ) { showWallpaperMenu() },
                 MenuItem(
+                    getString(R.string.background_video),
+                    value = getString(if (hasVideo) R.string.background_image_set else R.string.background_image_none),
+                    submenu = true,
+                ) { showVideoMenu() },
+                MenuItem(
                     getString(R.string.background_brightness),
                     value = "$backgroundIntensity %",
                 ) { backgroundAdjust = settings.backgroundIntensity() },
@@ -1036,14 +1059,18 @@ class LauncherActivity : ComponentActivity() {
     }
 
     private fun showBackgroundStyleMenu() = openMenu {
-        // "Image" is only a style once there's an image to show.
+        // "Image" and "Video" are only styles once there's something to show.
         val styles = listOf(
             BackgroundStyle.AMBIENT,
             BackgroundStyle.AURORA,
             BackgroundStyle.ACCENT_GRADIENT,
             BackgroundStyle.SOLID,
             BackgroundStyle.WALLPAPER,
-        ).filter { it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null }
+            BackgroundStyle.VIDEO,
+        ).filter {
+            (it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null) &&
+                (it != BackgroundStyle.VIDEO || backgroundVideo != null)
+        }
         MenuSpec(
             title = getString(R.string.background_style),
             items = styles.map { style ->
@@ -1076,6 +1103,44 @@ class LauncherActivity : ComponentActivity() {
             }
         }
         MenuSpec(getString(R.string.background_wallpaper), items)
+    }
+
+    /** The video background: pick one, frame it (same choices as an image), or remove it. */
+    private fun showVideoMenu() = openMenu {
+        val items = mutableListOf(
+            MenuItem(getString(R.string.background_video_pick)) { pickVideo() },
+        )
+        if (backgroundVideo != null) {
+            items += MenuItem(
+                getString(R.string.video_fit),
+                value = wallpaperFitName(wallpaperFit),
+                submenu = true,
+            ) { showWallpaperFitMenu() }
+            items += MenuItem(getString(R.string.background_video_remove), divider = true) {
+                settings.setBackgroundVideoUri(null)
+                backgroundVideo = null
+                if (background == BackgroundStyle.VIDEO) {
+                    settings.setBackground(BackgroundStyle.AMBIENT)
+                    background = BackgroundStyle.AMBIENT
+                }
+            }
+        }
+        MenuSpec(getString(R.string.background_video), items)
+    }
+
+    /** Opens the system document picker for a video (MP4, WebM…) to loop behind the launcher. */
+    private fun pickVideo() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("video/*")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_PICK_VIDEO)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No document picker on this device", e)
+            toast(R.string.background_no_picker)
+        }
     }
 
     private fun showWallpaperFitMenu() = openMenu {
@@ -1348,6 +1413,7 @@ class LauncherActivity : ComponentActivity() {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
         const val REQUEST_PICK_WALLPAPER = 2001
+        const val REQUEST_PICK_VIDEO = 2002
         const val IDLE_CHECK_MS = 5_000L
     }
 }

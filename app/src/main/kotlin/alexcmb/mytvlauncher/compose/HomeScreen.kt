@@ -13,6 +13,7 @@ import alexcmb.mytvlauncher.widget.WidgetAlignment
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.os.SystemClock
 import android.view.View
 import androidx.activity.compose.BackHandler
@@ -175,6 +176,7 @@ fun HomeScreen(
     clock: ClockOptions,
     background: BackgroundStyle,
     backgroundImage: ImageBitmap?,
+    backgroundVideo: Uri?,
     backgroundIntensity: Int,
     wallpaperFit: WallpaperFit,
     cardSize: CardSize,
@@ -281,6 +283,11 @@ fun HomeScreen(
                     Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
                 }
                 BackgroundStyle.AURORA -> AuroraBackdrop(accentColor, intensity)
+                BackgroundStyle.VIDEO -> if (backgroundVideo != null) {
+                    VideoBackdrop(backgroundVideo, wallpaperFit)
+                    // Brightness, as for an image: more intensity → thinner scrim.
+                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                }
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
             }
             // Sleep mode fades the controls away and leaves the background on its own.
