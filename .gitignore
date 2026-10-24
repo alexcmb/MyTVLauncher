@@ -26,3 +26,6 @@ release.jks*
 
 # Written by CI's dependency audit (-PlockShipped --write-locks), never kept
 /app/gradle.lockfile
+
+# Local test wallpapers (dynamic HEIC etc.), never published
+/wallpaper/

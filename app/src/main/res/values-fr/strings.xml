@@ -130,6 +130,17 @@
     <string name="background_video_remove">Retirer la vidéo</string>
     <string name="background_video_error">La TV ne peut pas lire cette vidéo (essayez un MP4 H.264 ou HEVC)</string>
     <string name="video_fit">Cadrage de la vidéo</string>
+    <string name="background_dynamic">Dynamique</string>
+    <string name="dynamic_pick">Choisir un fichier HEIC…</string>
+    <string name="dynamic_city">Ville (pour le soleil)</string>
+    <string name="dynamic_mode">Suit</string>
+    <string name="dynamic_mode_time">l’heure</string>
+    <string name="dynamic_mode_sun">le soleil</string>
+    <string name="dynamic_remove">Retirer le fond dynamique</string>
+    <string name="dynamic_importing">Import du fond dynamique…</string>
+    <string name="dynamic_not_dynamic">Ce fichier n’est pas un fond dynamique</string>
+    <string name="dynamic_unsupported">Android 9 minimum pour les fonds HEIC</string>
+    <string name="dynamic_failed">Échec de l’import du fond dynamique</string>
     <string name="background_image_none">Aucune</string>
     <string name="action_hidden_apps_label">Apps masquées</string>
     <string name="widget_menu_size">Taille</string>

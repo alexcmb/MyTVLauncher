@@ -39,6 +39,9 @@ enum class BackgroundStyle {
 
     /** A user-picked video, looping silently, dimmed by the brightness setting. */
     VIDEO,
+
+    /** A dynamic HEIC: pictures of one scene through the day, cross-faded with the time. */
+    DYNAMIC,
 }
 
 /** How a wallpaper image is scaled onto the screen. */
@@ -73,6 +76,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_BACKGROUND = "background"
         private const val KEY_BG_IMAGE = "background_image"
         private const val KEY_BG_VIDEO = "background_video"
+        private const val KEY_BG_DYNAMIC = "background_dynamic"
+        private const val KEY_DYNAMIC_CITY = "dynamic_city"
         private const val KEY_BG_FIT = "background_fit"
         private const val KEY_BG_INTENSITY = "background_intensity"
         private const val KEY_CARD_SIZE = "card_size"
@@ -139,6 +144,20 @@ class SettingsRepository private constructor(context: Context) {
 
     /** The content URI of the user's chosen wallpaper, or null if none is set. */
     fun backgroundImageUri(): String? = sharedPreferences.getString(KEY_BG_IMAGE, null)
+
+    /** The imported dynamic wallpaper's schedule (DynamicSchedule.encode), or null. */
+    fun dynamicSchedule(): String? = sharedPreferences.getString(KEY_BG_DYNAMIC, null)
+
+    fun setDynamicSchedule(encoded: String?) =
+        sharedPreferences.edit().apply {
+            if (encoded == null) remove(KEY_BG_DYNAMIC) else putString(KEY_BG_DYNAMIC, encoded)
+        }.apply()
+
+    /** The city sun-driven wallpapers follow (a name from Cities). */
+    fun dynamicCity(): String? = sharedPreferences.getString(KEY_DYNAMIC_CITY, null)
+
+    fun setDynamicCity(name: String) =
+        sharedPreferences.edit().putString(KEY_DYNAMIC_CITY, name).apply()
 
     /** The content URI of the user's chosen video background, or null if none is set. */
     fun backgroundVideoUri(): String? = sharedPreferences.getString(KEY_BG_VIDEO, null)
