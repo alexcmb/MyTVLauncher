@@ -12,9 +12,9 @@ No ads. No tracking. No account. Works offline.
 
 ## What it does
 
-**A home after Apple TV.** The top of the screen is left to your background; everything sits in
-the bottom third — the media playing, the focused app's name and a dock of favourites over a
-soft gradient. Widgets wait out of sight: press Up from the dock and they come in at the top
+**A home that leaves room for your background.** The top of the screen is left to it; everything
+sits in the bottom third: the media playing, the focused app's name and a dock of favourites
+over a soft gradient. Widgets wait out of sight: press Up from the dock and they come in at the top
 corners, press Down and they tuck away again.
 
 **A side rail.** Tabs and settings live in one rail down the left edge: a slim strip of glass
@@ -26,7 +26,7 @@ your own order; the TV's inputs (HDMI, AV) get a tab of their own.
 kind:
 
 - **Looping videos** (MP4/WebM), silent, hardware-decoded.
-- **Day/night dynamic wallpapers** — the macOS HEIC kind. They follow the clock, or the real
+- **Day/night dynamic wallpapers** (HEIC). They follow the clock, or the real
   position of the sun over your city, cross-fading from dawn to night.
 - **Still images**, with fill, fit, stretch, centre or span framing.
 - **Generated**: a drifting aurora, the focused app's banner, an accent gradient, plain.
