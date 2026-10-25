@@ -90,6 +90,7 @@ class SettingsRepository private constructor(context: Context) {
         const val BG_INTENSITY_STEP = 10
         private const val KEY_USAGE_COUNT = "usage_count"
         private const val KEY_APP_LABELS = "app_labels"
+        private const val KEY_SHOW_WIDGETS = "show_widgets"
         private const val KEY_TAB_ORDER = "tab_order"
         private const val KEY_TABS_HIDDEN = "tabs_hidden"
         private const val KEY_STARTUP_TAB = "startup_tab"
@@ -210,6 +211,12 @@ class SettingsRepository private constructor(context: Context) {
         sharedPreferences.edit().putBoolean(KEY_USAGE_COUNT, show).apply()
 
     /** Whether every card carries its app name, not just the banner-less fallback ones. */
+    /** Whether the hub shows its widgets at the top. */
+    fun showWidgets(): Boolean = sharedPreferences.getBoolean(KEY_SHOW_WIDGETS, true)
+
+    fun setShowWidgets(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_SHOW_WIDGETS, show).apply()
+
     fun showAppLabels(): Boolean = sharedPreferences.getBoolean(KEY_APP_LABELS, false)
 
     fun setShowAppLabels(show: Boolean) =
