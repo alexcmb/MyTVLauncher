@@ -34,6 +34,11 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -52,7 +57,9 @@ private val Idle = Color.White.copy(alpha = 0.72f)
 // its page. Both are only as tall as their rows.
 internal val RailShape = RoundedCornerShape(28.dp)
 internal val RailRowShape = RoundedCornerShape(16.dp)
-internal val RailInset = PaddingValues(start = 12.dp, top = 24.dp, bottom = 24.dp)
+/** The rail's left edge; the hub's dock and its names line up on it. */
+internal val RailStart = 12.dp
+internal val RailInset = PaddingValues(start = RailStart, top = 24.dp, bottom = 24.dp)
 internal const val RailGlass = 0.88f
 
 /** The rail at rest: icons only. The content starts past it (see [RailReserve]). */
@@ -83,6 +90,7 @@ internal fun NavRail(
     onSelect: (Int) -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onRight: () -> Boolean = { false },
 ) {
     var expanded by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (expanded) RailExpanded else RailCollapsed, tween(220), label = "rail")
@@ -96,6 +104,11 @@ internal fun NavRail(
                 expanded = it.hasFocus && tabs.isNotEmpty()
             }
             .focusProperties { enter = { tabsFocus } }
+            // Right goes back to the content; [onRight] can send it somewhere spatial search
+            // wouldn't find (the hub's dock lies below the rail, not beside it).
+            .onPreviewKeyEvent { event ->
+                event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight && onRight()
+            }
             .focusGroup()
             .glass(RailShape, opacity = 0.42f + (RailGlass - 0.42f) * labels)
             .clipToBounds()

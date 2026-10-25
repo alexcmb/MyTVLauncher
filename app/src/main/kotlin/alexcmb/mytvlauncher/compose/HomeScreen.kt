@@ -343,12 +343,15 @@ fun HomeScreen(
                 label = "content",
             )
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
-                Column(Modifier.fillMaxSize().padding(start = RailReserve)) {
+                // The grid tabs and the header start past the resting rail; the hub runs
+                // under it, its bottom block lined up on the rail's left edge (the rail only
+                // reaches as far down as its rows).
+                Column(Modifier.fillMaxSize()) {
                     // The header: the focused app's name on the grid tabs (the hub names it
                     // above its dock instead), and the clock on the right.
                     Box(Modifier.fillMaxWidth().height(HeaderHeight)) {
                         if (selectedTab != 0) {
-                            Box(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 8.dp)) {
+                            Box(Modifier.align(Alignment.BottomStart).padding(start = RailReserve + 48.dp, bottom = 8.dp)) {
                                 focused?.let { HeroText(it, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount) }
                             }
                         }
@@ -391,15 +394,20 @@ fun HomeScreen(
                                 allApps = shown.shortcuts,
                                 showUsageCount = showUsageCount,
                                 dockFocus = dockFocus,
+                                railFocus = tabsFocus,
                                 widgetsShown = widgetsShown,
                                 onWidgetsShown = { widgetsShown = it },
                             )
-                            shown is SourcesTab -> SourcesGrid(shown.sources, cardSize, onOpenSource)
-                            shown is AppsTab -> AppsGrid(
-                                shown.shortcuts, cardSize, showAppLabels, onLaunch, onGridLongPress,
-                                state = gridStates.getOrPut(shown.title) { LazyGridState() },
-                                memory = listMemory.getOrPut(shown.title) { FocusMemory() },
-                            ) { focused = it }
+                            shown is SourcesTab -> Box(Modifier.padding(start = RailReserve)) {
+                                SourcesGrid(shown.sources, cardSize, onOpenSource)
+                            }
+                            shown is AppsTab -> Box(Modifier.padding(start = RailReserve)) {
+                                AppsGrid(
+                                    shown.shortcuts, cardSize, showAppLabels, onLaunch, onGridLongPress,
+                                    state = gridStates.getOrPut(shown.title) { LazyGridState() },
+                                    memory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                                ) { focused = it }
+                            }
                         }
                     }
                 }
@@ -407,6 +415,7 @@ fun HomeScreen(
                     tabs, selectedTab, tabsFocus, homeTabFocus,
                     onSelect = { selectedKey = tabs[it].key; focused = null },
                     onSettings = onSettings,
+                    onRight = { selectedTab == 0 && runCatching { dockFocus.requestFocus() }.isSuccess },
                     modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
             }
@@ -529,6 +538,7 @@ private fun Hub(
     allApps: List<Shortcut>,
     showUsageCount: Boolean,
     dockFocus: FocusRequester,
+    railFocus: FocusRequester,
     widgetsShown: Boolean,
     onWidgetsShown: (Boolean) -> Unit,
 ) {
@@ -562,6 +572,15 @@ private fun Hub(
             // doesn't drift onto the rail. Previewed, so it wins even over an embedded widget
             // view that might swallow the press.
             .onPreviewKeyEvent { event ->
+                // The dock lines up under the rail rather than beside it, so Left from its
+                // first card (or from the media card) has nothing to its left: wire it to the
+                // rail.
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    val atLeftEdge = nowPlayingFocused ||
+                        (dockFocused && focused != null && focused.id == favourites.firstOrNull()?.id)
+                    if (atLeftEdge) runCatching { railFocus.requestFocus() }
+                    return@onPreviewKeyEvent atLeftEdge
+                }
                 if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
                     return@onPreviewKeyEvent false
                 }
@@ -591,7 +610,8 @@ private fun Hub(
                         // Widgets aren't apps: drop the app backdrop and name back to idle.
                         if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
                     }
-                    .padding(horizontal = 48.dp),
+                    // Clear of the rail, which comes down over the top left corner.
+                    .padding(start = RailReserve + 48.dp, end = 48.dp),
             ) {
                 // Always three zones, in this order (an empty one takes no room): see WidgetBand.
                 val onFocused = { id: Int -> focusedWidget = id }
@@ -622,7 +642,7 @@ private fun Hub(
                         // Not an app: drop the app backdrop and name back to idle.
                         if (isFocused) onWidgetsFocused()
                     },
-                    modifier = Modifier.padding(start = 48.dp, bottom = 4.dp),
+                    modifier = Modifier.padding(start = RailStart, bottom = 4.dp),
                 )
             }
             // The dock's header: the focused favourite's name, else the row's title —
@@ -631,7 +651,7 @@ private fun Hub(
             // hint that there are widgets above while they're tucked away.
             val pinnedAny = favourites.any { it.id in pinned }
             Row(
-                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 48.dp),
+                modifier = Modifier.fillMaxWidth().height(64.dp).padding(start = RailStart, end = 48.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Box(Modifier.weight(1f)) {
@@ -675,7 +695,7 @@ private fun Hub(
             // vertical padding must clear the focused card's 1.08 scale plus its 2dp border.
             LazyRow(
                 state = favouritesState,
-                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(start = RailStart, end = 48.dp, top = 16.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
