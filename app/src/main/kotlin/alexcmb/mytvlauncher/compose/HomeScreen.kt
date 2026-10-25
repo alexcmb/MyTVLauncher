@@ -407,7 +407,7 @@ fun HomeScreen(
                     tabs, selectedTab, tabsFocus, homeTabFocus,
                     onSelect = { selectedKey = tabs[it].key; focused = null },
                     onSettings = onSettings,
-                    modifier = Modifier.align(Alignment.CenterStart).onFocusChanged { railFocused = it.hasFocus },
+                    modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
             }
         }

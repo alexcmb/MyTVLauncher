@@ -13,8 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -48,18 +47,24 @@ import androidx.tv.material3.Text
 // Lighter than the rest of the launcher's muted text: the resting rail sits on the bare
 // background, often bright, with only a thin glass under its icons.
 private val Idle = Color.White.copy(alpha = 0.72f)
-private val RailShape = RoundedCornerShape(28.dp)
+// The rail and the settings panel are one menu: the settings open in the rail's place, with
+// its width, shape, glass and rows (TvMenu, docked), so opening them reads as the rail turning
+// its page. Both are only as tall as their rows.
+internal val RailShape = RoundedCornerShape(28.dp)
+internal val RailRowShape = RoundedCornerShape(16.dp)
+internal val RailInset = PaddingValues(start = 12.dp, top = 24.dp, bottom = 24.dp)
+internal const val RailGlass = 0.88f
 
 /** The rail at rest: icons only. The content starts past it (see [RailReserve]). */
 internal val RailCollapsed = 64.dp
-private val RailExpanded = 248.dp
+internal val RailExpanded = 340.dp
 
 /** Room the content leaves on the left for the resting rail and its margin. */
 internal val RailReserve = 64.dp
 
 /**
  * The home screen's navigation, down the left edge: a tab per row and the settings at the
- * bottom. At rest it's a narrow strip of translucent glass with discrete icons; when the focus
+ * end. At rest it's a narrow strip of translucent glass with discrete icons; when the focus
  * comes in it widens into a panel with the names, over the content (which doesn't move) —
  * a deeper glass, so it reads as a layer above without hiding the screen.
  *
@@ -84,8 +89,7 @@ internal fun NavRail(
     val labels by animateFloatAsState(if (expanded) 1f else 0f, tween(180), label = "labels")
     Column(
         modifier = modifier
-            .fillMaxHeight()
-            .padding(start = 12.dp, top = 24.dp, bottom = 24.dp)
+            .padding(RailInset)
             .width(width)
             .onFocusChanged {
                 // Not while the apps are still loading and the settings are all there is.
@@ -93,7 +97,7 @@ internal fun NavRail(
             }
             .focusProperties { enter = { tabsFocus } }
             .focusGroup()
-            .glass(RailShape, opacity = 0.42f + 0.43f * labels)
+            .glass(RailShape, opacity = 0.42f + (RailGlass - 0.42f) * labels)
             .clipToBounds()
             .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -114,7 +118,14 @@ internal fun NavRail(
                 modifier = requesters,
             ) { onSelect(index) }
         }
-        Spacer(Modifier.weight(1f))
+        // The settings right under the tabs, past a thin line.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .height(1.dp)
+                .background(Color.White.copy(alpha = 0.12f))
+        )
         RailItem(
             label = stringResource(R.string.action_settings),
             selected = false,
@@ -157,7 +168,7 @@ private fun RailItem(
                     focused -> Color.White.copy(alpha = 0.15f)
                     else -> Color.Transparent
                 },
-                RoundedCornerShape(16.dp),
+                RailRowShape,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
