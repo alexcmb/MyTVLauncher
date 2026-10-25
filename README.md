@@ -10,29 +10,41 @@ No ads. No tracking. No account. Works offline.
 
 </div>
 
-![The home hub: a band of widgets above the most-used apps, with categories as tabs](docs/home.png)
-
 ## What it does
 
-**A home that's a hub, not a wall of icons.** The first tab keeps a band of widgets above a
-short "most used" row — your full app list lives behind the category tabs.
+**A home after Apple TV.** The top of the screen is left to your background; everything sits in
+the bottom third — the media playing, the focused app's name and a dock of favourites over a
+soft gradient. Widgets wait out of sight: press Up from the dock and they come in at the top
+corners, press Down and they tuck away again.
 
-**Apps, organised.** Apps are grouped into categories, and each category is a tab. Long-press
-any app to move it to another category (or a brand new one), hide it from the launcher,
-uninstall it, or open its system info. Hidden apps come back from Settings.
+**A side rail.** Tabs and settings live in one rail down the left edge: a slim strip of glass
+at rest, a panel with names when you move onto it. OK switches tab; the settings open in that
+same panel. Each category of apps is a tab with a full grid, sorted by usage, by name or in
+your own order; the TV's inputs (HDMI, AV) get a tab of their own.
 
-**Widgets.** Host up to three. Each gets one of five sizes (XS→XL) and sits left, centre or
-right. Widgets are hosted at a fixed size and scaled to fit, so making one smaller really
-shrinks it rather than cropping it — and the band lays out in thirds so they never overlap.
+**Backgrounds, in a gallery.** Keep as many as you like and pick them from cards, filtered by
+kind:
 
-**Appearance, live.** Accent colour: six presets, or **Auto**, which pulls the colour out of
-the focused app's banner and eases between apps. A clock with optional seconds, date and a
-time-of-day greeting. Background: ambient banner, accent gradient, or plain. Card size S/M/L.
+- **Looping videos** (MP4/WebM), silent, hardware-decoded.
+- **Day/night dynamic wallpapers** — the macOS HEIC kind. They follow the clock, or the real
+  position of the sun over your city, cross-fading from dawn to night.
+- **Still images**, with fill, fit, stretch, centre or span framing.
+- **Generated**: a drifting aurora, the focused app's banner, an accent gradient, plain.
 
-**Built in Compose for TV** — the old Leanback UI is gone. English and French.
+**Apps, organised.** Long-press any app to pin it to the dock, move it to another category
+(or a new one), hide it, uninstall it or open its system info. Categories can be renamed,
+reordered, hidden or deleted, and you choose which tab opens at start.
 
-**Updates itself** from GitHub Releases, but only when you ask (Settings → Check for updates).
-That is the only time it touches the network.
+**Widgets.** Host up to three; each gets one of five sizes and a zone (left, centre, right).
+
+**The rest.** A glass look throughout, the Outfit typeface, an accent colour (presets, or
+**Auto**, taken from the focused app's banner), a clock with optional seconds, date and
+greeting, and a sleep mode that leaves the background, the time and what's playing (with its
+cover) on screen. English and French.
+
+**Updates itself** from GitHub Releases, but only when you ask (Settings → Check for updates),
+and only installs an APK signed with the same key. That is the only time it touches the
+network.
 
 ## Install
 
@@ -40,10 +52,11 @@ Grab the APK from the [latest release](https://github.com/alexcmb/MyTVLauncher/r
 and sideload it:
 
 ```
-adb install -r JustTvLauncher-v0.2.apk
+adb install -r MyTvLauncher-v0.11.apk
 ```
 
-Android 5.0 (API 21) or newer. Then press Home and pick My TV Launcher.
+Android 6.0 (API 23) or newer; dynamic HEIC wallpapers need Android 9. Then press Home and
+pick My TV Launcher.
 
 ## Widgets need a one-time permission
 
@@ -64,9 +77,13 @@ are used automatically and need none of this.
 ./gradlew assembleDebug
 ```
 
-JDK 17. The debug keystore in `keystore/` is committed on purpose, so local and CI builds
-share one signature and the in-app updater can install over an existing install. Pushing a
-`vMAJOR.MINOR.PATCH` tag runs the tests, builds the APK and publishes a release.
+JDK 17 or newer. The debug build installs as `alexcmb.mytvlauncher.dev`, next to the release
+one, so you can try changes without touching your launcher.
+
+Every push and pull request runs the unit tests, Android Lint, Semgrep, gitleaks, an
+OSV-Scanner audit of the shipped dependencies and CodeQL. Pushing a `vMAJOR.MINOR[.PATCH]`
+tag builds the release APK, signs it with the key held in the repository's secrets, and
+publishes a GitHub Release whose text is the tag's message.
 
 ## License
 
