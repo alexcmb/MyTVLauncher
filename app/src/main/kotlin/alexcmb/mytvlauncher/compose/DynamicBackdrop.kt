@@ -37,7 +37,7 @@ fun DynamicBackdrop(
     frame: (Int) -> File,
     city: City,
     scale: ContentScale,
-    version: Int,
+    id: String,
 ) {
     val mix by produceState(mixNow(schedule, city), schedule, city) {
         while (true) {
@@ -47,7 +47,7 @@ fun DynamicBackdrop(
     }
     // Decoded pictures kept (a file has 4–16, 1080p RGB_565: ~4 MB each), so moving on to the
     // next pair reuses the one already on screen instead of flashing while it decodes again.
-    val cache = remember(version) { mutableStateMapOf<Int, ImageBitmap>() }
+    val cache = remember(id) { mutableStateMapOf<Int, ImageBitmap>() }
     val from = rememberFrame(mix.from, frame, cache)
     val to = rememberFrame(mix.to, frame, cache)
     val blend by animateFloatAsState(mix.blend, tween(durationMillis = 2_000), label = "dynamic")

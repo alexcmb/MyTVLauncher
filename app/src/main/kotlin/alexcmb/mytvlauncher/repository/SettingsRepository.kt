@@ -78,6 +78,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_BG_VIDEO = "background_video"
         private const val KEY_BG_DYNAMIC = "background_dynamic"
         private const val KEY_DYNAMIC_CITY = "dynamic_city"
+        private const val KEY_WALLPAPERS = "wallpapers"
+        private const val KEY_WALLPAPER_ACTIVE = "wallpaper_active"
         private const val KEY_BG_FIT = "background_fit"
         private const val KEY_BG_INTENSITY = "background_intensity"
         private const val KEY_CARD_SIZE = "card_size"
@@ -142,35 +144,38 @@ class SettingsRepository private constructor(context: Context) {
     fun setBackground(style: BackgroundStyle) =
         sharedPreferences.edit().putString(KEY_BACKGROUND, style.name).apply()
 
-    /** The content URI of the user's chosen wallpaper, or null if none is set. */
-    fun backgroundImageUri(): String? = sharedPreferences.getString(KEY_BG_IMAGE, null)
+    /** The wallpaper library (WallpaperLibrary.encode), or null before it was first written. */
+    fun wallpapers(): String? = sharedPreferences.getString(KEY_WALLPAPERS, null)
 
-    /** The imported dynamic wallpaper's schedule (DynamicSchedule.encode), or null. */
-    fun dynamicSchedule(): String? = sharedPreferences.getString(KEY_BG_DYNAMIC, null)
+    fun setWallpapers(encoded: String) =
+        sharedPreferences.edit().putString(KEY_WALLPAPERS, encoded).apply()
 
-    fun setDynamicSchedule(encoded: String?) =
+    /** The id of the library wallpaper the image/video/dynamic styles show, or null. */
+    fun activeWallpaper(): String? = sharedPreferences.getString(KEY_WALLPAPER_ACTIVE, null)
+
+    fun setActiveWallpaper(id: String?) =
         sharedPreferences.edit().apply {
-            if (encoded == null) remove(KEY_BG_DYNAMIC) else putString(KEY_BG_DYNAMIC, encoded)
+            if (id == null) remove(KEY_WALLPAPER_ACTIVE) else putString(KEY_WALLPAPER_ACTIVE, id)
         }.apply()
+
+    /**
+     * Before the library there was one slot per kind: an image URI, a video URI, a dynamic
+     * schedule. Read once to carry them into the library, then [clearLegacyWallpapers].
+     */
+    fun legacyWallpapers(): Triple<String?, String?, String?> = Triple(
+        sharedPreferences.getString(KEY_BG_IMAGE, null),
+        sharedPreferences.getString(KEY_BG_VIDEO, null),
+        sharedPreferences.getString(KEY_BG_DYNAMIC, null),
+    )
+
+    fun clearLegacyWallpapers() =
+        sharedPreferences.edit().remove(KEY_BG_IMAGE).remove(KEY_BG_VIDEO).remove(KEY_BG_DYNAMIC).apply()
 
     /** The city sun-driven wallpapers follow (a name from Cities). */
     fun dynamicCity(): String? = sharedPreferences.getString(KEY_DYNAMIC_CITY, null)
 
     fun setDynamicCity(name: String) =
         sharedPreferences.edit().putString(KEY_DYNAMIC_CITY, name).apply()
-
-    /** The content URI of the user's chosen video background, or null if none is set. */
-    fun backgroundVideoUri(): String? = sharedPreferences.getString(KEY_BG_VIDEO, null)
-
-    fun setBackgroundVideoUri(uri: String?) =
-        sharedPreferences.edit().apply {
-            if (uri == null) remove(KEY_BG_VIDEO) else putString(KEY_BG_VIDEO, uri)
-        }.apply()
-
-    fun setBackgroundImageUri(uri: String?) =
-        sharedPreferences.edit().apply {
-            if (uri == null) remove(KEY_BG_IMAGE) else putString(KEY_BG_IMAGE, uri)
-        }.apply()
 
     fun wallpaperFit(): WallpaperFit =
         sharedPreferences.getString(KEY_BG_FIT, null)

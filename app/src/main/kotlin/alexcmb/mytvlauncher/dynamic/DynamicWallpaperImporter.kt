@@ -29,13 +29,11 @@ class DynamicWallpaperImporter(private val context: Context) {
         data object Failed : Result
     }
 
-    /** Where the imported pictures live: dynamic/0.jpg, 1.jpg… */
-    val folder: File get() = File(context.filesDir, "dynamic")
-
-    fun frame(index: Int) = File(folder, "$index.jpg")
-
-    /** Blocking (call it off the main thread). [onProgress] gets (done, total). */
-    fun import(uri: Uri, onProgress: (Int, Int) -> Unit = { _, _ -> }): Result {
+    /**
+     * Extracts [uri]'s pictures into [folder] as 0.jpg, 1.jpg… (see [frame]). Blocking (call it
+     * off the main thread). [onProgress] gets (done, total).
+     */
+    fun import(uri: Uri, folder: File, onProgress: (Int, Int) -> Unit = { _, _ -> }): Result {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return Result.Unsupported
         return try {
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -49,7 +47,7 @@ class DynamicWallpaperImporter(private val context: Context) {
                 if (count < schedule.imageCount) return Result.NotDynamic
                 // A fresh folder written aside, swapped in only once complete: a failed
                 // import leaves the current wallpaper untouched.
-                val staging = File(context.filesDir, "dynamic.new").apply { deleteRecursively(); mkdirs() }
+                val staging = File(folder.parentFile, folder.name + ".new").apply { deleteRecursively(); mkdirs() }
                 val params = MediaMetadataRetriever.BitmapParams().apply {
                     preferredConfig = Bitmap.Config.RGB_565 // half the memory of a 6K ARGB frame
                 }
@@ -62,6 +60,7 @@ class DynamicWallpaperImporter(private val context: Context) {
                     onProgress(i + 1, schedule.imageCount)
                 }
                 folder.deleteRecursively()
+                folder.parentFile?.mkdirs()
                 if (!staging.renameTo(folder)) return Result.Failed
                 Result.Done(schedule, schedule.imageCount)
             } finally {
@@ -71,10 +70,6 @@ class DynamicWallpaperImporter(private val context: Context) {
             Log.w(TAG, "Dynamic wallpaper import failed", e)
             Result.Failed
         }
-    }
-
-    fun clear() {
-        folder.deleteRecursively()
     }
 
     /** [source] scaled so it covers [w]×[h], cropped to that size around its centre. */
@@ -89,7 +84,10 @@ class DynamicWallpaperImporter(private val context: Context) {
         return out
     }
 
-    private companion object {
-        const val TAG = "DynamicWallpaper"
+    companion object {
+        private const val TAG = "DynamicWallpaper"
+
+        /** Picture [index] of a wallpaper imported into [folder]. */
+        fun frame(folder: File, index: Int) = File(folder, "$index.jpg")
     }
 }

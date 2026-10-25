@@ -4,9 +4,13 @@ import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.compose.AmbientScreen
 import alexcmb.mytvlauncher.compose.DynamicWallpaper
+import alexcmb.mytvlauncher.compose.WallpaperGallery
+import alexcmb.mytvlauncher.compose.generatedKey
 import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.dynamic.DynamicSchedule
-import alexcmb.mytvlauncher.dynamic.DynamicWallpaperImporter
+import alexcmb.mytvlauncher.wallpaper.Wallpaper
+import alexcmb.mytvlauncher.wallpaper.WallpaperKind
+import alexcmb.mytvlauncher.wallpaper.WallpaperStore
 import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
@@ -20,6 +24,8 @@ import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
 import alexcmb.mytvlauncher.compose.FocusTracker
 import alexcmb.mytvlauncher.compose.LocalAccent
+import alexcmb.mytvlauncher.compose.LocalFocusTracker
+import androidx.compose.ui.focus.FocusRequester
 import alexcmb.mytvlauncher.media.NowPlaying
 import alexcmb.mytvlauncher.media.NowPlayingController
 import alexcmb.mytvlauncher.media.NowPlayingListenerService
@@ -151,11 +157,19 @@ class LauncherActivity : ComponentActivity() {
     private var background by mutableStateOf(BackgroundStyle.AMBIENT)
     private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
     private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
-    private var backgroundVideo by mutableStateOf<Uri?>(null)
-    private val dynamicImporter by lazy { DynamicWallpaperImporter(applicationContext) }
-    private var dynamicSchedule by mutableStateOf<DynamicSchedule?>(null)
+    // The wallpaper library, and which of its wallpapers the image/video/dynamic styles show.
+    private val wallpaperStore by lazy { WallpaperStore(applicationContext, settings) }
+    private var wallpapers by mutableStateOf<List<Wallpaper>>(emptyList())
+    private var activeWallpaper by mutableStateOf<String?>(null)
+    private val active: Wallpaper? get() = wallpapers.firstOrNull { it.id == activeWallpaper }
     private var dynamicCity by mutableStateOf(Cities.DEFAULT)
-    private var dynamicVersion by mutableStateOf(0)
+    // The wallpaper gallery. It opens from a menu, which stays on the stack under it (hidden)
+    // and comes back when it closes; menus opened from the gallery (a card's options) sit
+    // above galleryMenuDepth and show over it. galleryReturn is where the focus was before.
+    private var galleryOpen by mutableStateOf(false)
+    private var galleryMenuDepth = 0
+    private var galleryReturn: FocusRequester? = null
+    private var importing by mutableStateOf(false)
     private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
     // Live value of the background-brightness slider while it's open, else null.
     private var backgroundAdjust by mutableStateOf<Int?>(null)
@@ -189,8 +203,8 @@ class LauncherActivity : ComponentActivity() {
         background = settings.background()
         backgroundIntensity = settings.backgroundIntensity()
         wallpaperFit = settings.wallpaperFit()
-        backgroundVideo = settings.backgroundVideoUri()?.let(Uri::parse)
-        dynamicSchedule = settings.dynamicSchedule()?.let(DynamicSchedule::decode)
+        wallpapers = wallpaperStore.library()
+        activeWallpaper = settings.activeWallpaper()
         dynamicCity = Cities.named(settings.dynamicCity())
         loadBackgroundImage()
         cardSize = settings.cardSize()
@@ -217,6 +231,9 @@ class LauncherActivity : ComponentActivity() {
             // Carry the in-flight add across a recreation so its configure result isn't lost.
             widgetSlot.pendingWidgetId =
                 savedInstanceState.getInt(STATE_PENDING_WIDGET, WidgetSlotController.NO_WIDGET)
+            // The document picker can recreate us too: come back to the gallery it was opened
+            // from (the menus under it are gone, so Back goes straight to the home screen).
+            galleryOpen = savedInstanceState.getBoolean(STATE_GALLERY, false)
         }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -239,9 +256,11 @@ class LauncherActivity : ComponentActivity() {
                         clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
                         background = background,
                         backgroundImage = backgroundImage,
-                        backgroundVideo = backgroundVideo,
-                        dynamicWallpaper = dynamicSchedule?.let {
-                            DynamicWallpaper(it, dynamicImporter::frame, dynamicCity, dynamicVersion)
+                        backgroundVideo = active?.takeIf { it.kind == WallpaperKind.VIDEO }?.uri?.let(Uri::parse),
+                        dynamicWallpaper = active?.takeIf { it.kind == WallpaperKind.DYNAMIC }?.let { w ->
+                            w.dynamicSchedule?.let { schedule ->
+                                DynamicWallpaper(schedule, { i -> wallpaperStore.frame(w.id, i) }, dynamicCity, w.id)
+                            }
                         },
                         backgroundIntensity = backgroundIntensity,
                         wallpaperFit = wallpaperFit,
@@ -262,15 +281,36 @@ class LauncherActivity : ComponentActivity() {
                         startupTab = startupTab,
                         homeRequests = homeRequests,
                         pinnedApps = pinnedApps,
-                        contentHidden = ambient,
+                        // Sleep mode and the gallery leave the background on its own: in the
+                        // gallery, that's the live preview of the card just applied.
+                        contentHidden = ambient || galleryOpen,
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
                     // and they come back at the same level once it's committed or cancelled. A
                     // name prompt opened from a menu hides it the same way.
-                    if (resizing == null && backgroundAdjust == null && namePrompt == null) {
+                    if (galleryOpen) {
+                        CompositionLocalProvider(LocalFocusTracker provides focusTracker) {
+                            WallpaperGallery(
+                                wallpapers = wallpapers,
+                                current = currentBackgroundKey(),
+                                importing = importing,
+                                styleName = ::backgroundStyleName,
+                                thumbnail = wallpaperStore::thumbnail,
+                                onAdd = ::pickWallpaper,
+                                onApply = ::applyWallpaper,
+                                onApplyStyle = ::applyStyle,
+                                onOptions = ::showWallpaperOptions,
+                                onDismiss = ::closeGallery,
+                            )
+                        }
+                    }
+                    val menuShown = !galleryOpen || menuStack.size > galleryMenuDepth
+                    if (resizing == null && backgroundAdjust == null && namePrompt == null && menuShown) {
                         menuStack.lastOrNull()?.let { build ->
                             TvMenu(build(), menuFocus) {
+                                // Stepping out of the gallery's own menus lands back on its card.
+                                if (galleryOpen && menuStack.size - 1 == galleryMenuDepth) returnFocus()
                                 if (menuStack.size == 1) closeMenus()
                                 else menuStack.removeAt(menuStack.lastIndex)
                             }
@@ -379,6 +419,7 @@ class LauncherActivity : ComponentActivity() {
             backgroundAdjust?.let { backgroundIntensity = settings.backgroundIntensity() }
             backgroundAdjust = null
             namePrompt = null
+            galleryOpen = false
             ambient = false
             homeRequests++
         }
@@ -421,7 +462,7 @@ class LauncherActivity : ComponentActivity() {
                 while (true) {
                     delay(IDLE_CHECK_MS)
                     val busy = menuStack.isNotEmpty() || resizing != null ||
-                        backgroundAdjust != null || namePrompt != null || !hasWindowFocus()
+                        backgroundAdjust != null || namePrompt != null || galleryOpen || !hasWindowFocus()
                     val idleMs = SystemClock.uptimeMillis() - lastInputAt
                     if (ambientMinutes > 0 && !ambient && !busy && idleMs >= ambientMinutes * 60_000L) {
                         ambient = true
@@ -445,6 +486,7 @@ class LauncherActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_PENDING_WIDGET, widgetSlot.pendingWidgetId)
+        outState.putBoolean(STATE_GALLERY, galleryOpen)
     }
 
     override fun onStop() {
@@ -465,57 +507,28 @@ class LauncherActivity : ComponentActivity() {
             WidgetSlotController.REQUEST_PICK -> widgetSlot.onPickResult(
                 granted, data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
             )
-            REQUEST_PICK_WALLPAPER -> if (granted) onWallpaperPicked(data)
-            REQUEST_PICK_VIDEO -> if (granted) onVideoPicked(data)
-            REQUEST_PICK_DYNAMIC -> if (granted) data?.data?.let(::importDynamic)
+            REQUEST_PICK_WALLPAPER -> if (granted) data?.data?.let(::addWallpaper)
         }
     }
 
     /**
-     * Imports a dynamic HEIC off the main thread: its pictures are extracted at 1080p into the
-     * app's storage (no need to keep access to the original), then it becomes the background.
+     * Adds a picked file to the library off the main thread — a dynamic HEIC has its pictures
+     * extracted first, which takes a few seconds — then shows it: the gallery, still open
+     * behind the picker, marks it as the one on screen.
      */
-    private fun importDynamic(uri: Uri) {
-        toast(R.string.dynamic_importing)
+    private fun addWallpaper(uri: Uri) {
+        importing = true
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { dynamicImporter.import(uri) }
+            val result = withContext(Dispatchers.IO) { wallpaperStore.add(uri) }
+            importing = false
             when (result) {
-                is DynamicWallpaperImporter.Result.Done -> {
-                    settings.setDynamicSchedule(DynamicSchedule.encode(result.schedule))
-                    settings.setBackground(BackgroundStyle.DYNAMIC)
-                    dynamicSchedule = result.schedule
-                    dynamicVersion++
-                    background = BackgroundStyle.DYNAMIC
+                is WallpaperStore.AddResult.Added -> {
+                    wallpapers = wallpaperStore.library()
+                    applyWallpaper(result.wallpaper)
                 }
-                DynamicWallpaperImporter.Result.NotDynamic -> toast(R.string.dynamic_not_dynamic)
-                DynamicWallpaperImporter.Result.Unsupported -> toast(R.string.dynamic_unsupported)
-                DynamicWallpaperImporter.Result.Failed -> toast(R.string.dynamic_failed)
+                WallpaperStore.AddResult.Failed -> toast(R.string.gallery_add_failed)
             }
         }
-    }
-
-    private fun onVideoPicked(data: Intent?) {
-        val uri = data?.data ?: return
-        // Persist read access so the video survives reboots.
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        settings.setBackgroundVideoUri(uri.toString())
-        settings.setBackground(BackgroundStyle.VIDEO)
-        backgroundVideo = uri
-        background = BackgroundStyle.VIDEO
-    }
-
-    private fun onWallpaperPicked(data: Intent?) {
-        val uri = data?.data ?: return
-        // Persist read access so the wallpaper survives reboots.
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        settings.setBackgroundImageUri(uri.toString())
-        settings.setBackground(BackgroundStyle.WALLPAPER)
-        background = BackgroundStyle.WALLPAPER
-        loadBackgroundImage()
     }
 
     // Host views kept across tab switches: rebuilding an AppWidgetHostView on every return to
@@ -973,7 +986,7 @@ class LauncherActivity : ComponentActivity() {
                 ) { showAccentMenu() },
                 MenuItem(
                     getString(R.string.action_background),
-                    value = backgroundStyleName(background),
+                    value = backgroundName(),
                     submenu = true,
                 ) { showBackgroundMenu() },
                 // Colours above, layout of the screen below.
@@ -1066,151 +1079,139 @@ class LauncherActivity : ComponentActivity() {
         }
     )
 
-    /** Background: what fills it (style), the image behind it, and how strongly it shows. */
+    /**
+     * Background: the gallery (every wallpaper, imported or generated), then the settings of
+     * the one on screen — its framing, the city a sun-driven one follows — and the brightness.
+     */
     private fun showBackgroundMenu() = openMenu {
-        val hasImage = settings.backgroundImageUri() != null
-        val hasVideo = backgroundVideo != null
-        val hasDynamic = dynamicSchedule != null
-        MenuSpec(
-            title = getString(R.string.action_background),
-            items = listOf(
-                MenuItem(
-                    getString(R.string.background_style),
-                    value = backgroundStyleName(background),
-                    submenu = true,
-                ) { showBackgroundStyleMenu() },
-                MenuItem(
-                    getString(R.string.background_wallpaper),
-                    value = getString(if (hasImage) R.string.background_image_set else R.string.background_image_none),
-                    submenu = true,
-                ) { showWallpaperMenu() },
-                MenuItem(
-                    getString(R.string.background_video),
-                    value = getString(if (hasVideo) R.string.background_image_set else R.string.background_image_none),
-                    submenu = true,
-                ) { showVideoMenu() },
-                MenuItem(
-                    getString(R.string.background_dynamic),
-                    value = getString(if (hasDynamic) R.string.background_image_set else R.string.background_image_none),
-                    submenu = true,
-                ) { showDynamicMenu() },
-                MenuItem(
-                    getString(R.string.background_brightness),
-                    value = "$backgroundIntensity %",
-                ) { backgroundAdjust = settings.backgroundIntensity() },
-            ),
-        )
-    }
-
-    private fun showBackgroundStyleMenu() = openMenu {
-        // "Image" and "Video" are only styles once there's something to show.
-        val styles = listOf(
-            BackgroundStyle.AMBIENT,
-            BackgroundStyle.AURORA,
-            BackgroundStyle.ACCENT_GRADIENT,
-            BackgroundStyle.SOLID,
-            BackgroundStyle.WALLPAPER,
-            BackgroundStyle.VIDEO,
-            BackgroundStyle.DYNAMIC,
-        ).filter {
-            (it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null) &&
-                (it != BackgroundStyle.VIDEO || backgroundVideo != null) &&
-                (it != BackgroundStyle.DYNAMIC || dynamicSchedule != null)
-        }
-        MenuSpec(
-            title = getString(R.string.background_style),
-            items = styles.map { style ->
-                MenuItem(backgroundStyleName(style), selected = style == background) {
-                    settings.setBackground(style)
-                    background = style
-                }
-            },
-        )
-    }
-
-    private fun showWallpaperMenu() = openMenu {
-        val hasImage = settings.backgroundImageUri() != null
+        val shown = active?.takeIf { backgroundKind(background) == it.kind }
         val items = mutableListOf(
-            MenuItem(getString(R.string.background_image)) { pickWallpaper() },
+            MenuItem(getString(R.string.wallpaper_gallery), value = backgroundName(), submenu = true) { openGallery() },
         )
-        if (hasImage) {
+        if (shown != null) {
             items += MenuItem(
                 getString(R.string.wallpaper_fit),
                 value = wallpaperFitName(wallpaperFit),
                 submenu = true,
             ) { showWallpaperFitMenu() }
-            items += MenuItem(getString(R.string.background_image_remove), divider = true) {
-                settings.setBackgroundImageUri(null)
-                backgroundImage = null
-                if (background == BackgroundStyle.WALLPAPER) {
-                    settings.setBackground(BackgroundStyle.AMBIENT)
-                    background = BackgroundStyle.AMBIENT
-                }
-            }
         }
-        MenuSpec(getString(R.string.background_wallpaper), items)
+        if (shown?.dynamicSchedule is DynamicSchedule.BySun) {
+            items += MenuItem(getString(R.string.dynamic_city), value = dynamicCity.name, submenu = true) { showCityMenu() }
+        }
+        items += MenuItem(
+            getString(R.string.background_brightness),
+            value = "$backgroundIntensity %",
+        ) { backgroundAdjust = settings.backgroundIntensity() }
+        MenuSpec(getString(R.string.action_background), items)
     }
 
-    /** The video background: pick one, frame it (same choices as an image), or remove it. */
-    private fun showVideoMenu() = openMenu {
+    /** The library kind a style shows, or null for the backgrounds the launcher generates. */
+    private fun backgroundKind(style: BackgroundStyle): WallpaperKind? = when (style) {
+        BackgroundStyle.WALLPAPER -> WallpaperKind.STILL
+        BackgroundStyle.VIDEO -> WallpaperKind.VIDEO
+        BackgroundStyle.DYNAMIC -> WallpaperKind.DYNAMIC
+        else -> null
+    }
+
+    /** What's on screen, by name: the wallpaper's own, or the generated style's. */
+    private fun backgroundName(): String {
+        val shown = active?.takeIf { backgroundKind(background) == it.kind }
+        return shown?.name ?: backgroundStyleName(background)
+    }
+
+    /** What's on screen as the gallery keys it. */
+    private fun currentBackgroundKey(): String {
+        val shown = active?.takeIf { backgroundKind(background) == it.kind }
+        return shown?.id ?: generatedKey(background)
+    }
+
+    private fun openGallery() {
+        galleryReturn = focusTracker.last
+        galleryMenuDepth = menuStack.size
+        galleryOpen = true
+    }
+
+    /** Back from the gallery: to the menu it was opened from, the focus on its row. */
+    private fun closeGallery() {
+        focusTracker.last = galleryReturn
+        galleryOpen = false
+    }
+
+    private fun applyWallpaper(wallpaper: Wallpaper) {
+        val style = when (wallpaper.kind) {
+            WallpaperKind.STILL -> BackgroundStyle.WALLPAPER
+            WallpaperKind.VIDEO -> BackgroundStyle.VIDEO
+            WallpaperKind.DYNAMIC -> BackgroundStyle.DYNAMIC
+        }
+        settings.setActiveWallpaper(wallpaper.id)
+        settings.setBackground(style)
+        activeWallpaper = wallpaper.id
+        background = style
+        loadBackgroundImage()
+    }
+
+    private fun applyStyle(style: BackgroundStyle) {
+        settings.setBackground(style)
+        background = style
+    }
+
+    /** A card's options (long press in the gallery): apply, framing, city, remove. */
+    private fun showWallpaperOptions(wallpaper: Wallpaper) = openMenu {
         val items = mutableListOf(
-            MenuItem(getString(R.string.background_video_pick)) { pickVideo() },
-        )
-        if (backgroundVideo != null) {
-            items += MenuItem(
-                getString(R.string.video_fit),
+            MenuItem(getString(R.string.wallpaper_apply)) {
+                applyWallpaper(wallpaper)
+                backToGallery()
+            },
+            MenuItem(
+                getString(R.string.wallpaper_fit),
                 value = wallpaperFitName(wallpaperFit),
                 submenu = true,
-            ) { showWallpaperFitMenu() }
-            items += MenuItem(getString(R.string.background_video_remove), divider = true) {
-                settings.setBackgroundVideoUri(null)
-                backgroundVideo = null
-                if (background == BackgroundStyle.VIDEO) {
-                    settings.setBackground(BackgroundStyle.AMBIENT)
-                    background = BackgroundStyle.AMBIENT
-                }
-            }
+            ) { showWallpaperFitMenu() },
+        )
+        if (wallpaper.dynamicSchedule is DynamicSchedule.BySun) {
+            items += MenuItem(getString(R.string.dynamic_city), value = dynamicCity.name, submenu = true) { showCityMenu() }
         }
-        MenuSpec(getString(R.string.background_video), items)
+        items += MenuItem(getString(R.string.wallpaper_remove), divider = true) {
+            removeWallpaper(wallpaper)
+            backToGallery()
+        }
+        MenuSpec(wallpaper.name, items)
+    }
+
+    /** Closes the menus opened from the gallery, back to it. */
+    private fun backToGallery() {
+        returnFocus()
+        while (menuStack.size > galleryMenuDepth) menuStack.removeAt(menuStack.lastIndex)
+    }
+
+    private fun removeWallpaper(wallpaper: Wallpaper) {
+        val wasShown = active?.id == wallpaper.id && backgroundKind(background) == wallpaper.kind
+        wallpaperStore.remove(wallpaper)
+        wallpapers = wallpaperStore.library()
+        if (activeWallpaper == wallpaper.id) activeWallpaper = null
+        if (wasShown) applyStyle(BackgroundStyle.AMBIENT)
+        loadBackgroundImage()
     }
 
     /**
-     * The dynamic wallpaper: import a HEIC, the city a sun-driven one follows, framing, remove.
-     * The city row says what it's for: a by-time file ignores it.
+     * The system document picker, for anything the gallery takes: a video, an image, a
+     * dynamic HEIC (providers label those image/heic or image/heif). What it is gets worked
+     * out once it's picked. Typed image/* with video/* as an extra type, not */*: on TVs without
+     * the system's document picker, */* may land on any app that claims every type.
      */
-    private fun showDynamicMenu() = openMenu {
-        val schedule = dynamicSchedule
-        val items = mutableListOf(
-            MenuItem(getString(R.string.dynamic_pick)) { pickDynamic() },
-            MenuItem(
-                getString(R.string.dynamic_city),
-                value = dynamicCity.name,
-                submenu = true,
-            ) { showCityMenu() },
-        )
-        if (schedule != null) {
-            items += MenuItem(
-                getString(R.string.dynamic_mode),
-                value = getString(
-                    if (schedule is DynamicSchedule.BySun) R.string.dynamic_mode_sun else R.string.dynamic_mode_time
-                ),
-            ) {}
-            items += MenuItem(
-                getString(R.string.wallpaper_fit),
-                value = wallpaperFitName(wallpaperFit),
-                submenu = true,
-            ) { showWallpaperFitMenu() }
-            items += MenuItem(getString(R.string.dynamic_remove), divider = true) {
-                dynamicImporter.clear()
-                settings.setDynamicSchedule(null)
-                dynamicSchedule = null
-                if (background == BackgroundStyle.DYNAMIC) {
-                    settings.setBackground(BackgroundStyle.AMBIENT)
-                    background = BackgroundStyle.AMBIENT
-                }
-            }
+    private fun pickWallpaper() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("video/*", "image/*"))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_PICK_WALLPAPER)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No document picker on this device", e)
+            toast(R.string.background_no_picker)
         }
-        MenuSpec(getString(R.string.background_dynamic), items)
     }
 
     private fun showCityMenu() = openMenu {
@@ -1225,36 +1226,6 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    /** The document picker for a dynamic HEIC (providers label those image/heic or image/heif). */
-    private fun pickDynamic() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("image/*")
-            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/heic", "image/heif", "image/*"))
-        try {
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_PICK_DYNAMIC)
-        } catch (e: ActivityNotFoundException) {
-            Log.w(TAG, "No document picker on this device", e)
-            toast(R.string.background_no_picker)
-        }
-    }
-
-    /** Opens the system document picker for a video (MP4, WebM…) to loop behind the launcher. */
-    private fun pickVideo() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("video/*")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        try {
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_PICK_VIDEO)
-        } catch (e: ActivityNotFoundException) {
-            Log.w(TAG, "No document picker on this device", e)
-            toast(R.string.background_no_picker)
-        }
-    }
-
     private fun showWallpaperFitMenu() = openMenu {
         MenuSpec(
             title = getString(R.string.wallpaper_fit),
@@ -1267,24 +1238,9 @@ class LauncherActivity : ComponentActivity() {
         )
     }
 
-    /** Opens the system document picker for an image to use as the wallpaper. */
-    private fun pickWallpaper() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
-            .addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("image/*")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        try {
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, REQUEST_PICK_WALLPAPER)
-        } catch (e: ActivityNotFoundException) {
-            Log.w(TAG, "No image picker on this device", e)
-            toast(R.string.background_no_picker)
-        }
-    }
-
-    /** Decodes the stored wallpaper off the main thread and publishes it to the UI. */
+    /** Decodes the library's active still image off the main thread and publishes it to the UI. */
     private fun loadBackgroundImage() {
-        val uri = settings.backgroundImageUri()?.let(Uri::parse)
+        val uri = active?.takeIf { it.kind == WallpaperKind.STILL }?.uri?.let(Uri::parse)
         if (uri == null) {
             backgroundImage = null
             return
@@ -1524,9 +1480,8 @@ class LauncherActivity : ComponentActivity() {
     private companion object {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
+        const val STATE_GALLERY = "gallery_open"
         const val REQUEST_PICK_WALLPAPER = 2001
-        const val REQUEST_PICK_VIDEO = 2002
-        const val REQUEST_PICK_DYNAMIC = 2003
         const val IDLE_CHECK_MS = 5_000L
     }
 }

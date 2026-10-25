@@ -167,13 +167,13 @@ data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: B
 
 /**
  * An imported dynamic wallpaper, as the home screen draws it: its schedule, where each
- * picture is, the city a sun schedule follows, and a version that changes on each import.
+ * picture is, the city a sun schedule follows, and its library id (a new one per import).
  */
 data class DynamicWallpaper(
     val schedule: alexcmb.mytvlauncher.dynamic.DynamicSchedule,
     val frame: (Int) -> java.io.File,
     val city: alexcmb.mytvlauncher.dynamic.City,
-    val version: Int,
+    val id: String,
 )
 
 /** The derived clock values shown on the left of the title bar. */
@@ -312,7 +312,7 @@ fun HomeScreen(
                             WallpaperFit.CENTER -> ContentScale.None
                             WallpaperFit.SPAN -> ContentScale.FillWidth
                         },
-                        dynamicWallpaper.version,
+                        dynamicWallpaper.id,
                     )
                     Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
                 }
@@ -1360,7 +1360,7 @@ private suspend fun paletteAccent(drawable: Drawable): Color? = paletteColour(dr
  * row feels alive rather than mechanical (tv-material's own scale is a plain tween).
  */
 @Composable
-private fun Modifier.focusLift(focused: Boolean): Modifier {
+internal fun Modifier.focusLift(focused: Boolean): Modifier {
     val lift by animateFloatAsState(
         targetValue = if (focused) 1.08f else 1f,
         animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
@@ -1372,7 +1372,7 @@ private fun Modifier.focusLift(focused: Boolean): Modifier {
 /** A soft halo of the accent colour under the focused card. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun focusGlow() = CardDefaults.glow(
+internal fun focusGlow() = CardDefaults.glow(
     focusedGlow = Glow(elevationColor = LocalAccent.current.copy(alpha = 0.75f), elevation = 18.dp),
 )
 
@@ -1484,11 +1484,11 @@ class FocusTracker {
     }
 }
 
-private val LocalFocusTracker = staticCompositionLocalOf<FocusTracker?> { null }
+internal val LocalFocusTracker = staticCompositionLocalOf<FocusTracker?> { null }
 
 /** Records this element in the [FocusTracker] whenever it takes the focus. */
 @Composable
-private fun Modifier.trackFocus(): Modifier {
+internal fun Modifier.trackFocus(): Modifier {
     val tracker = LocalFocusTracker.current ?: return this
     val requester = remember { FocusRequester() }
     return this
