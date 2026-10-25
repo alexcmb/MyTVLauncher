@@ -3,6 +3,7 @@ package alexcmb.mytvlauncher.compose
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +33,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -70,7 +73,12 @@ private val Muted = Color(0xFF9AA0B4)
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: () -> Unit) {
+fun TvMenu(
+    spec: MenuSpec,
+    focusMemory: MutableMap<String, String>,
+    docked: Boolean = false,
+    onDismiss: () -> Unit,
+) {
     BackHandler(onBack = onDismiss)
     val requesters = remember(spec.items.size) { List(spec.items.size) { FocusRequester() } }
     // Keyed on the title (a new level) and the rows' labels (rows added, removed, moved or
@@ -107,33 +115,62 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
                     true
                 }
             }
-            // Lighter than an opaque dim, so the glass panel reads as see-through.
+            // Lighter than an opaque dim, so the glass panel reads as see-through. Docked,
+            // only the side the panel is on darkens; the rest of the screen stays in view.
             .fadeInOnce()
-            .background(Color.Black.copy(alpha = 0.45f)),
-        contentAlignment = Alignment.Center,
+            .background(
+                if (docked) {
+                    Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.6f to Color.Transparent)
+                } else {
+                    SolidColor(Color.Black.copy(alpha = 0.45f))
+                }
+            ),
+        contentAlignment = if (docked) Alignment.TopStart else Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 280.dp, max = 440.dp)
-                .heightIn(max = 480.dp)
-                // Each level pops in, so going into a submenu reads as moving somewhere.
-                .popIn(spec.title)
-                .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
-                .padding(vertical = 16.dp, horizontal = 12.dp),
+                .then(
+                    // Docked: the rail itself, turned to the settings — its place, width,
+                    // shape, glass and rows (see NavRail), as tall as the rows (it scrolls past
+                    // the screen's height). Else a dialog in the middle of the screen, whose
+                    // levels pop in, so going into a submenu reads as moving somewhere.
+                    if (docked) {
+                        Modifier
+                            .padding(RailInset)
+                            .width(RailExpanded)
+                            .glass(RailShape, opacity = RailGlass)
+                            .padding(vertical = 14.dp)
+                    } else {
+                        Modifier
+                            .widthIn(min = 280.dp, max = 440.dp)
+                            .heightIn(max = 480.dp)
+                            .popIn(spec.title)
+                            .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
+                            .padding(vertical = 16.dp, horizontal = 12.dp)
+                    }
+                ),
         ) {
             Text(
                 text = spec.title,
                 color = Muted,
                 fontSize = 13.sp,
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 10.dp),
+                modifier = Modifier.padding(
+                    start = if (docked) 20.dp else 12.dp,
+                    end = 12.dp,
+                    top = 4.dp,
+                    bottom = if (docked) 6.dp else 10.dp,
+                ),
             )
-            Column(Modifier.verticalScroll(rememberScrollState())) {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(if (docked) 6.dp else 0.dp),
+            ) {
                 spec.items.forEachIndexed { index, item ->
                     if (item.divider && index > 0) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = if (docked) 16.dp else 12.dp, vertical = 6.dp)
                                 .height(1.dp)
                                 .background(Color.White.copy(alpha = 0.12f))
                         )
@@ -150,7 +187,7 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
                             if (index == 0) up = FocusRequester.Cancel
                             if (index == spec.items.lastIndex) down = FocusRequester.Cancel
                         }
-                    MenuRow(item, rowModifier) { focusMemory[spec.title] = item.label }
+                    MenuRow(item, docked, rowModifier) { focusMemory[spec.title] = item.label }
                 }
             }
         }
@@ -158,11 +195,13 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
 }
 
 @Composable
-private fun MenuRow(item: MenuItem, modifier: Modifier, onFocused: () -> Unit) {
+private fun MenuRow(item: MenuItem, docked: Boolean, modifier: Modifier, onFocused: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val accent = LocalAccent.current
     Row(
         modifier = modifier
+            // Docked, a row of the rail: inset, 48dp tall, its rounder highlight.
+            .then(if (docked) Modifier.padding(horizontal = 8.dp).heightIn(min = 48.dp) else Modifier)
             .fillMaxWidth()
             .onFocusChanged {
                 focused = it.isFocused
@@ -171,7 +210,7 @@ private fun MenuRow(item: MenuItem, modifier: Modifier, onFocused: () -> Unit) {
             .clickable { item.onClick() }
             .background(
                 color = if (focused) accent else Color.Transparent,
-                shape = RoundedCornerShape(8.dp),
+                shape = if (docked) RailRowShape else RoundedCornerShape(8.dp),
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

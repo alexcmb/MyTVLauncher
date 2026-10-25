@@ -117,8 +117,20 @@ class LauncherActivity : ComponentActivity() {
     // Last focused row (its label) per menu title, so Back lands on the row that opened the submenu.
     private val menuFocus = mutableMapOf<String, String>()
 
+    // The settings opened from the rail show docked down the left edge, in the rail's place,
+    // and so do the levels opened from them; any other menu is a dialog in the middle.
+    private var menuDocked by mutableStateOf(false)
+    private var dockNextMenu = false
+
+    private fun openSettingsFromRail() {
+        dockNextMenu = true
+        showSettingsMenu()
+    }
+
     /** Shows a menu level: refreshes the top level if it has the same title, else pushes. */
     private fun openMenu(build: () -> MenuSpec) {
+        if (menuStack.isEmpty()) menuDocked = dockNextMenu
+        dockNextMenu = false
         val title = build().title
         if (menuStack.lastOrNull()?.invoke()?.title == title) {
             menuStack[menuStack.lastIndex] = build
@@ -276,7 +288,7 @@ class LauncherActivity : ComponentActivity() {
                         onOpenSource = sourceController::open,
                         onPlayPause = nowPlayingController::playPause,
                         onOpenNowPlaying = nowPlayingController::openApp,
-                        onSettings = ::showSettingsMenu,
+                        onSettings = ::openSettingsFromRail,
                         focusTracker = focusTracker,
                         startupTab = startupTab,
                         homeRequests = homeRequests,
@@ -308,7 +320,8 @@ class LauncherActivity : ComponentActivity() {
                     val menuShown = !galleryOpen || menuStack.size > galleryMenuDepth
                     if (resizing == null && backgroundAdjust == null && namePrompt == null && menuShown) {
                         menuStack.lastOrNull()?.let { build ->
-                            TvMenu(build(), menuFocus) {
+                            // Over the gallery (a card's options), a dialog as usual.
+                            TvMenu(build(), menuFocus, docked = menuDocked && !galleryOpen) {
                                 // Stepping out of the gallery's own menus lands back on its card.
                                 if (galleryOpen && menuStack.size - 1 == galleryMenuDepth) returnFocus()
                                 if (menuStack.size == 1) closeMenus()

@@ -158,4 +158,5 @@
     <string name="phase_night">Nuit</string>
     <string name="wallpaper_apply">Appliquer</string>
     <string name="wallpaper_remove">Retirer de la bibliothèque</string>
+    <string name="home_widgets_hint">Widgets</string>
 </resources>

@@ -19,13 +19,13 @@ import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -33,7 +33,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,11 +68,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -98,17 +96,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
@@ -144,6 +140,9 @@ private val Muted = Color(0xFF9AA0B4)
 // the glass's light on top. One corner radius for all of them.
 private val CardShape = RoundedCornerShape(12.dp)
 private const val FAVOURITES = 8
+
+/** The band above the content: the clock, and the focused app's name on the grid tabs. */
+private val HeaderHeight = 150.dp
 
 /**
  * A widget to place on the hub: its tile footprint, the size its host view is laid out at
@@ -216,30 +215,50 @@ fun HomeScreen(
     val selectedTab = tabs.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
-    // DPAD-up from the content lands back on the selected tab. The tabs are centred, so
-    // spatial focus search would drift to the settings orb instead — this wires it directly.
+    // The rail's selected row: where Left and Back from the content land.
     val tabsFocus = remember { FocusRequester() }
-    // The Home chip, so Back from another tab's chips can return to it.
+    // The Home row, so Back from another tab's row can return to it.
     val homeTabFocus = remember { FocusRequester() }
-    var topBarFocused by remember { mutableStateOf(false) }
-
-    // HOME pressed while the launcher is up (or to come back to it): the startup tab, with the
-    // focus on its chip — the card that had it may belong to a tab that's no longer shown.
-    LaunchedEffect(homeRequests) {
-        if (homeRequests == 0) return@LaunchedEffect
-        selectedKey = startupTab
-        focused = null
-        withFrameNanos { } // let the chip for the new selection take tabsFocus
-        runCatching { tabsFocus.requestFocus() }
+    // The hub's dock, where the focus starts.
+    val dockFocus = remember { FocusRequester() }
+    var railFocused by remember { mutableStateOf(false) }
+    // The hub's widgets wait out of sight until asked for (Up from the dock), and go again
+    // when the focus goes back down to the dock, to the rail, or to another tab.
+    var widgetsShown by remember { mutableStateOf(false) }
+    LaunchedEffect(railFocused, selectedTab) {
+        if (railFocused || selectedTab != 0) widgetsShown = false
     }
 
-    // Back walks up the screen: content -> the tabs -> the Home tab. On Home's tabs there's
+    // At start, and on HOME pressed while the launcher is up (or to come back to it): the
+    // startup tab, the focus on the dock if that's the hub, else on its rail row — the card
+    // that had it may belong to a tab that's no longer shown.
+    LaunchedEffect(homeRequests, tabs.isNotEmpty()) {
+        if (tabs.isEmpty()) return@LaunchedEffect
+        selectedKey = startupTab
+        focused = null
+        // The dock may take a few frames to be laid out (the first apps arrive while the
+        // screen is still settling): try it for a moment before falling back on the rail.
+        val onHub = tabs.indexOfFirst { it.key == startupTab }.coerceAtLeast(0) == 0
+        var onDock = false
+        repeat(if (onHub) 10 else 1) {
+            if (onDock) return@repeat
+            withFrameNanos { }
+            onDock = onHub && runCatching { dockFocus.requestFocus() }.isSuccess
+        }
+        if (!onDock) runCatching { tabsFocus.requestFocus() }
+    }
+
+    // Back walks out of the screen: content -> the rail -> the Home tab. On Home there's
     // nowhere left to go (a launcher must not exit). Menus and sliders register their own
     // handler later, so they still take Back first while they're open.
     BackHandler {
         when {
-            !topBarFocused -> runCatching { tabsFocus.requestFocus() }
-            selectedTab != 0 -> runCatching { homeTabFocus.requestFocus() }
+            !railFocused -> runCatching { tabsFocus.requestFocus() }
+            selectedTab != 0 -> {
+                selectedKey = tabs[0].key
+                focused = null
+                runCatching { homeTabFocus.requestFocus() }
+            }
         }
     }
 
@@ -291,14 +310,12 @@ fun HomeScreen(
                         contentScale = scale,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    // Brightness: more intensity → thinner scrim → brighter wallpaper.
-                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                    MediaScrim(intensity, onHub = selectedTab == 0)
                 }
                 BackgroundStyle.AURORA -> AuroraBackdrop(accentColor, intensity)
                 BackgroundStyle.VIDEO -> if (backgroundVideo != null) {
                     VideoBackdrop(backgroundVideo, wallpaperFit)
-                    // Brightness, as for an image: more intensity → thinner scrim.
-                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                    MediaScrim(intensity, onHub = selectedTab == 0)
                 }
                 BackgroundStyle.DYNAMIC -> if (dynamicWallpaper != null) {
                     DynamicBackdrop(
@@ -314,194 +331,151 @@ fun HomeScreen(
                         },
                         dynamicWallpaper.id,
                     )
-                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                    MediaScrim(intensity, onHub = selectedTab == 0)
                 }
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
             }
+            HubShade(visible = selectedTab == 0 && !contentHidden, widgetsShown = widgetsShown, intensity = intensity)
             // Sleep mode fades the controls away and leaves the background on its own.
             val contentAlpha by animateFloatAsState(
                 targetValue = if (contentHidden) 0f else 1f,
                 animationSpec = tween(durationMillis = if (contentHidden) 800 else 250),
                 label = "content",
             )
-            Column(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
-                TopBar(
-                    tabs, selectedTab, clock, tabsFocus, homeTabFocus, onSettings,
-                    Modifier.onFocusChanged { topBarFocused = it.hasFocus },
-                ) { selectedKey = tabs[it].key; focused = null }
-                // The hero band reserves room for a focused app's name on the grid tabs. The hub
-                // has none: it names the focused favourite right above its row instead, in a
-                // header of fixed height, so its centred content never jumps as focus moves.
-                val heroHeight by animateDpAsState(
-                    targetValue = if (selectedTab == 0) 0.dp else 64.dp,
-                    label = "hero",
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
+                Column(Modifier.fillMaxSize().padding(start = RailReserve)) {
+                    // The header: the focused app's name on the grid tabs (the hub names it
+                    // above its dock instead), and the clock on the right.
+                    Box(Modifier.fillMaxWidth().height(HeaderHeight)) {
+                        if (selectedTab != 0) {
+                            Box(Modifier.align(Alignment.BottomStart).padding(start = 48.dp, bottom = 8.dp)) {
+                                focused?.let { HeroText(it, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount) }
+                            }
+                        }
+                        Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
+                    }
+                    // Switching tabs slides the content a little the way the focus went on the
+                    // rail (up for a row further down) and cross-fades, instead of swapping it
+                    // in a single frame.
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            val dir = if (targetState > initialState) 1 else -1
+                            (fadeIn(tween(220)) + slideInVertically(tween(220)) { dir * it / 16 }) togetherWith
+                                (fadeOut(tween(140)) + slideOutVertically(tween(140)) { -dir * it / 16 })
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        label = "tab",
+                    ) { index ->
+                        val shown = tabs.getOrNull(index)
+                        when {
+                            shown == null -> Unit
+                            // The first tab is a hub: widgets and a few favourites, nothing endless.
+                            index == 0 && shown is AppsTab -> Hub(
+                                widgets = widgets,
+                                favourites = Favourites.pick(shown.shortcuts, pinnedApps, FAVOURITES),
+                                pinned = pinnedApps.toSet(),
+                                cardSize = cardSize,
+                                showAppLabels = showAppLabels,
+                                nowPlaying = nowPlaying,
+                                onLaunch = onLaunch,
+                                onLongPress = onLongPress,
+                                onWidgetLongPress = onWidgetLongPress,
+                                onPlayPause = onPlayPause,
+                                onOpenNowPlaying = onOpenNowPlaying,
+                                onFocus = { focused = it },
+                                onWidgetsFocused = { focused = null },
+                                favouritesState = favouritesState,
+                                favouritesMemory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                                focused = focused,
+                                allApps = shown.shortcuts,
+                                showUsageCount = showUsageCount,
+                                dockFocus = dockFocus,
+                                widgetsShown = widgetsShown,
+                                onWidgetsShown = { widgetsShown = it },
+                            )
+                            shown is SourcesTab -> SourcesGrid(shown.sources, cardSize, onOpenSource)
+                            shown is AppsTab -> AppsGrid(
+                                shown.shortcuts, cardSize, showAppLabels, onLaunch, onGridLongPress,
+                                state = gridStates.getOrPut(shown.title) { LazyGridState() },
+                                memory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                            ) { focused = it }
+                        }
+                    }
+                }
+                NavRail(
+                    tabs, selectedTab, tabsFocus, homeTabFocus,
+                    onSelect = { selectedKey = tabs[it].key; focused = null },
+                    onSettings = onSettings,
+                    modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
-                Hero(focused, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount, heroHeight)
-                // Switching tabs slides the content a little the way the focus went (right for a
-                // tab further right) and cross-fades, instead of swapping it in a single frame.
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = {
-                        val dir = if (targetState > initialState) 1 else -1
-                        (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { dir * it / 12 }) togetherWith
-                            (fadeOut(tween(140)) + slideOutHorizontally(tween(140)) { -dir * it / 12 })
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    label = "tab",
-                ) { index ->
-                    val shown = tabs.getOrNull(index)
-                    when {
-                        shown == null -> Unit
-                        // The first tab is a hub: widgets and a few favourites, nothing endless.
-                        index == 0 && shown is AppsTab -> Hub(
-                            widgets = widgets,
-                            favourites = Favourites.pick(shown.shortcuts, pinnedApps, FAVOURITES),
-                            pinned = pinnedApps.toSet(),
-                            cardSize = cardSize,
-                            tabsFocus = tabsFocus,
-                            showAppLabels = showAppLabels,
-                            nowPlaying = nowPlaying,
-                            onLaunch = onLaunch,
-                            onLongPress = onLongPress,
-                            onWidgetLongPress = onWidgetLongPress,
-                            onPlayPause = onPlayPause,
-                            onOpenNowPlaying = onOpenNowPlaying,
-                            onFocus = { focused = it },
-                            onWidgetsFocused = { focused = null },
-                            favouritesState = favouritesState,
-                            favouritesMemory = listMemory.getOrPut(shown.title) { FocusMemory() },
-                            focused = focused,
-                            allApps = shown.shortcuts,
-                            showUsageCount = showUsageCount,
-                        )
-                        shown is SourcesTab -> SourcesGrid(shown.sources, cardSize, tabsFocus, onOpenSource)
-                        shown is AppsTab -> AppsGrid(
-                            shown.shortcuts, cardSize, tabsFocus, showAppLabels, onLaunch, onGridLongPress,
-                            state = gridStates.getOrPut(shown.title) { LazyGridState() },
-                            memory = listMemory.getOrPut(shown.title) { FocusMemory() },
-                        ) { focused = it }
-                    }
-                }
             }
         }
     }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
+/**
+ * The background's dimming behind an image, a video or a dynamic wallpaper. On the grid tabs
+ * the whole picture is dimmed (their cards are all over it), the more so the lower the
+ * brightness setting; the hub leaves it clear and only shades its bottom (see [HubShade]).
+ */
 @Composable
-private fun TopBar(
-    tabs: List<HomeTab>,
-    selected: Int,
-    clock: ClockOptions,
-    tabsFocus: FocusRequester,
-    homeTabFocus: FocusRequester,
-    onSettings: () -> Unit,
-    modifier: Modifier,
-    onSelect: (Int) -> Unit,
-) {
-    // Each part is anchored on its own: settings hard left, clock hard right, tabs on the
-    // true screen centre. Laying these out in a row with weighted spacers instead centres
-    // the tabs *between* the orb and the clock, and since those two aren't the same width
-    // the tabs end up off-centre by half the difference.
-    Box(modifier = modifier.fillMaxWidth().padding(horizontal = 48.dp, vertical = 20.dp)) {
-        SettingsOrb(onSettings, Modifier.align(Alignment.CenterStart).trackFocus())
-        // A hand-rolled row rather than tv-material's TabRow: its sliding indicator
-        // animation hitched on the tab change.
-        if (tabs.isNotEmpty()) {
-            // The tabs sit in one floating glass pill.
-            Row(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .glass(RoundedCornerShape(99.dp), opacity = 0.4f)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    // The selected chip is the up-target from the content below.
-                    // The Home chip also answers to homeTabFocus (Back from another tab).
-                    val chipModifier = Modifier
-                        .then(if (index == selected) Modifier.focusRequester(tabsFocus) else Modifier)
-                        .then(if (index == 0) Modifier.focusRequester(homeTabFocus) else Modifier)
-                        .trackFocus()
-                    TabChip(tab.title, selected = index == selected, modifier = chipModifier) {
-                        onSelect(index)
-                    }
-                }
-            }
-        }
-        // Derived here so the once-a-second tick only recomposes the bar, not the screen.
-        val values = rememberClockValues(clock)
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .glass(RoundedCornerShape(14.dp), opacity = 0.4f)
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            horizontalAlignment = Alignment.End,
-        ) {
-            values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
-            // The clock is the one big figure on the bar: large and light.
-            Text(values.time, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
-            values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
-        }
-    }
+private fun MediaScrim(intensity: Float, onHub: Boolean) {
+    val alpha by animateFloatAsState(
+        targetValue = if (onHub) 0f else lerpF(0.8f, 0.2f, intensity),
+        animationSpec = tween(300),
+        label = "scrim",
+    )
+    Box(Modifier.fillMaxSize().background(Background.copy(alpha = alpha)))
 }
 
-/** One tab: focus selects it, the selected one wears the accent. No slide animation. */
+/**
+ * The hub's shade: the top of the screen is left to the background, and a gradient darkens
+ * only its bottom third, where the dock and its names sit — clear down to 55% of the height,
+ * then 45% black at 75% and 85% at the bottom edge, lightened as the brightness setting goes
+ * up. While the widgets are out, a second, shorter gradient does the same at the top.
+ */
 @Composable
-private fun TabChip(
-    title: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onSelect: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val background = when {
-        selected -> LocalAccent.current
-        focused -> Color.White.copy(alpha = 0.15f)
-        else -> Color.Transparent
-    }
-    Text(
-        text = title,
-        color = if (selected) Color.White else Muted,
-        fontSize = 14.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = modifier
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onSelect()
-            }
-            .clickable { onSelect() }
-            .background(background, RoundedCornerShape(99.dp))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+private fun HubShade(visible: Boolean, widgetsShown: Boolean, intensity: Float) {
+    val shown by animateFloatAsState(if (visible) 1f else 0f, tween(300), label = "shade")
+    val top by animateFloatAsState(if (visible && widgetsShown) 1f else 0f, tween(260), label = "topShade")
+    val k = lerpF(1f, 0.65f, intensity)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = shown }
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    0.55f to Color.Transparent,
+                    0.75f to Color.Black.copy(alpha = 0.45f * k),
+                    1f to Color.Black.copy(alpha = 0.85f * k),
+                )
+            )
+    )
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { alpha = top }
+            .background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f * k), 0.4f to Color.Transparent))
     )
 }
 
+/** The clock, top right; its own scope, so the once-a-second tick only recomposes it. */
 @Composable
-private fun SettingsOrb(onSettings: () -> Unit, modifier: Modifier = Modifier) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
+private fun Clock(clock: ClockOptions, modifier: Modifier) {
+    val values = rememberClockValues(clock)
+    Column(
         modifier = modifier
-            .onFocusChanged { focused = it.isFocused }
-            .clickable { onSettings() }
-            .glass(CircleShape, opacity = 0.4f)
-            .background(if (focused) LocalAccent.current else Color.Transparent, CircleShape)
-            .padding(8.dp),
+            .glass(RoundedCornerShape(14.dp), opacity = 0.4f)
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.End,
     ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_settings),
-            contentDescription = stringResource(R.string.action_settings),
-            tint = if (focused) Color.White else Muted,
-            modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-/** Surfaces the open count — data the launcher has always collected and never shown. */
-@Composable
-private fun Hero(focused: Shortcut?, inTab: List<Shortcut>, showUsageCount: Boolean, height: Dp) {
-    Column(Modifier.fillMaxWidth().height(height).padding(start = 48.dp)) {
-        if (focused != null) HeroText(focused, inTab, showUsageCount)
+        values.greeting?.let { Text(it, color = Muted, fontSize = 12.sp) }
+        // The clock is the one big figure on the screen: large and light.
+        Text(values.time, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Light)
+        values.date?.let { Text(it, color = Muted, fontSize = 12.sp) }
     }
 }
 
@@ -528,13 +502,18 @@ private fun HeroText(focused: Shortcut, inTab: List<Shortcut>, showUsageCount: B
     }
 }
 
+/**
+ * The hub, after the Apple TV home screen: the top of the screen left to the background and
+ * everything in its bottom third — the media playing, the focused app's name, and a dock of
+ * favourites. The widgets wait out of sight: Up from the top of that block brings them in at
+ * the top (each zone in its corner, as placed), and going back down tucks them away again.
+ */
 @Composable
 private fun Hub(
     widgets: List<WidgetTile>,
     favourites: List<Shortcut>,
     pinned: Set<String>,
     cardSize: CardSize,
-    tabsFocus: FocusRequester,
     showAppLabels: Boolean,
     nowPlaying: NowPlaying?,
     onLaunch: (Shortcut) -> Unit,
@@ -549,134 +528,138 @@ private fun Hub(
     focused: Shortcut?,
     allApps: List<Shortcut>,
     showUsageCount: Boolean,
+    dockFocus: FocusRequester,
+    widgetsShown: Boolean,
+    onWidgetsShown: (Boolean) -> Unit,
 ) {
-    // As focus moves down to the apps, the widgets slide up and fade and the app cards
-    // grow. Driven by graphicsLayer only — the widgets stay in the layout and focusable,
-    // so moving back up returns to them and expands the band again.
-    var appsFocused by remember { mutableStateOf(false) }
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
-    // The now-playing card sits above the widgets; track its focus so DPAD-up chains correctly.
     var nowPlayingFocused by remember { mutableStateOf(false) }
+    var dockFocused by remember { mutableStateOf(false) }
     val nowPlayingFocus = remember { FocusRequester() }
-    val collapse by animateFloatAsState(
-        targetValue = if (appsFocused && widgets.isNotEmpty()) 1f else 0f,
-        animationSpec = tween(durationMillis = 260),
-        label = "collapse",
-    )
     val spotlight by animateFloatAsState(
         targetValue = if (focusedWidget != null) 1f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    // Heights as laid out. When the focus goes down to the favourites, the now-playing card
-    // and the widget band fade and slide up by their own height, and the row rises by half
-    // the band's: the widgets and the row are centred together, so that puts the row in the
-    // middle of their space.
-    var nowPlayingHeight by remember { mutableIntStateOf(0) }
-    var bandHeight by remember { mutableIntStateOf(0) }
-    // Slimmer favourites at rest so the shorter (16:9) row keeps clear of the screen's bottom
-    // edge, which TV overscan can eat into. They grow back to full size as the band collapses
-    // and the row rises into the freed space, where there's plenty of room.
-    val restFavouriteWidth = (cardSize.favouriteWidthDp - 40).dp
-    val fullFavouriteWidth = (cardSize.favouriteWidthDp + 60).dp
-    // With no widgets the row is the whole hub: full-size cards from the start.
-    val cardWidth = if (widgets.isEmpty()) fullFavouriteWidth
-    else lerp(restFavouriteWidth, fullFavouriteWidth, collapse)
+    // Up brought the widgets in: once they're laid out, carry the focus up into them.
+    val focusManager = LocalFocusManager.current
+    var enterWidgets by remember { mutableStateOf(false) }
+    LaunchedEffect(enterWidgets) {
+        if (!enterWidgets) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
+        focusManager.moveFocus(FocusDirection.Up)
+        enterWidgets = false
+    }
 
-    Column(
+    Box(
         Modifier
-            // The now-playing card sits just under the tabs; the widgets and the favourites
-            // are one block centred in the rest, so with few rows (no widgets) the hub doesn't
-            // cling to the top and leave the screen empty — nor push the card down with it.
             .fillMaxSize()
-            // No horizontal padding on the group itself: the scrollable favourites row needs
-            // its clip bounds out at the screen edge so a focused card can scale up without
-            // being clipped. The 48dp margin is applied per child instead.
             .focusGroup()
-            // DPAD-up walks one level up the hub: favourites → widgets → now-playing → tabs.
-            // The now-playing card and the tabs are reached by an explicit request (the tabs
-            // are centred, so plain spatial search would drift to the settings orb). A previewed
-            // key so it wins even over an embedded widget view that might swallow the press.
+            // Up from the top of the bottom block brings the widgets in. With none (or from
+            // the widgets themselves) there's nothing above: the press is kept, so the focus
+            // doesn't drift onto the rail. Previewed, so it wins even over an embedded widget
+            // view that might swallow the press.
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
                     return@onPreviewKeyEvent false
                 }
-                val target = when {
-                    nowPlayingFocused -> tabsFocus
-                    focusedWidget != null -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
-                    widgets.isEmpty() -> if (nowPlaying != null) nowPlayingFocus else tabsFocus
-                    else -> null // favourites with widgets above: let spatial nav reach them
-                }
-                if (target != null) {
-                    target.requestFocus()
-                    true
-                } else {
-                    false
+                val atTop = nowPlayingFocused || (dockFocused && nowPlaying == null)
+                when {
+                    focusedWidget != null -> true
+                    atTop && widgets.isEmpty() -> true
+                    atTop && !widgetsShown -> {
+                        onWidgetsShown(true)
+                        enterWidgets = true
+                        true
+                    }
+                    else -> false
                 }
             },
     ) {
-        if (nowPlaying != null) {
-            NowPlayingCard(
-                nowPlaying = nowPlaying,
-                focusRequester = nowPlayingFocus,
-                onPlayPause = onPlayPause,
-                onOpen = onOpenNowPlaying,
-                onFocusChanged = { focused ->
-                    nowPlayingFocused = focused
-                    if (focused) {
-                        appsFocused = false
-                        // Not an app: drop the app backdrop/hero back to their idle state.
-                        onWidgetsFocused()
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .onSizeChanged { nowPlayingHeight = it.height }
-                    .padding(top = 8.dp)
-                    .graphicsLayer {
-                        alpha = 1f - collapse
-                        translationY = -collapse * nowPlayingHeight
-                    },
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
+        AnimatedVisibility(
+            visible = widgetsShown && widgets.isNotEmpty(),
+            enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { -it / 3 },
+            exit = fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 3 },
+            modifier = Modifier.align(Alignment.TopCenter),
         ) {
-            if (widgets.isNotEmpty()) {
-                val startTiles = widgets.filter { it.alignment == WidgetAlignment.START }
-                val centerTiles = widgets.filter { it.alignment == WidgetAlignment.CENTER }
-                val endTiles = widgets.filter { it.alignment == WidgetAlignment.END }
-                WidgetBand(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onSizeChanged { bandHeight = it.height }
-                        .onFocusChanged {
-                            if (it.hasFocus) {
-                                appsFocused = false
-                                // Widgets aren't apps: drop the app backdrop back to black.
-                                onWidgetsFocused()
-                            } else {
-                                focusedWidget = null
-                            }
-                        }
-                        .graphicsLayer {
-                            alpha = 1f - collapse
-                            translationY = -collapse * bandHeight
-                        }
-                        .padding(start = 48.dp, end = 48.dp, bottom = 8.dp),
-                ) {
-                    // Always three zones, in this order (an empty one takes no room): see WidgetBand.
-                    val onFocused = { id: Int -> focusedWidget = id }
-                    WidgetZone(startTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
-                    WidgetZone(centerTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
-                    WidgetZone(endTiles, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+            WidgetBand(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged {
+                        // Widgets aren't apps: drop the app backdrop and name back to idle.
+                        if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
+                    }
+                    .padding(horizontal = 48.dp),
+            ) {
+                // Always three zones, in this order (an empty one takes no room): see WidgetBand.
+                val onFocused = { id: Int -> focusedWidget = id }
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.START }, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.CENTER }, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+                WidgetZone(widgets.filter { it.alignment == WidgetAlignment.END }, spotlight, focusedWidget, onFocused, onWidgetLongPress)
+            }
+        }
+
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(bottom = 20.dp)
+                // Back down to the media or the dock: the widgets tuck away.
+                .onFocusChanged { if (it.hasFocus) onWidgetsShown(false) }
+                // Dimmed under the widget spotlight.
+                .graphicsLayer { alpha = 1f - 0.75f * spotlight },
+        ) {
+            if (nowPlaying != null) {
+                NowPlayingCard(
+                    nowPlaying = nowPlaying,
+                    focusRequester = nowPlayingFocus,
+                    onPlayPause = onPlayPause,
+                    onOpen = onOpenNowPlaying,
+                    onFocusChanged = { isFocused ->
+                        nowPlayingFocused = isFocused
+                        // Not an app: drop the app backdrop and name back to idle.
+                        if (isFocused) onWidgetsFocused()
+                    },
+                    modifier = Modifier.padding(start = 48.dp, bottom = 4.dp),
+                )
+            }
+            // The dock's header: the focused favourite's name, else the row's title —
+            // "Favourites" once something is pinned, until then honestly just the most used.
+            // A fixed height, so the dock never shifts as the focus moves. On the right, a
+            // hint that there are widgets above while they're tucked away.
+            val pinnedAny = favourites.any { it.id in pinned }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 48.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    if (focused != null && focused in favourites) {
+                        HeroText(focused, allApps, showUsageCount)
+                    } else {
+                        Text(
+                            text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
+                            color = Muted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+                if (widgets.isNotEmpty() && !widgetsShown) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painterResource(R.drawable.ic_expand_less),
+                            contentDescription = null,
+                            tint = Muted,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(stringResource(R.string.home_widgets_hint), color = Muted, fontSize = 12.sp)
+                    }
                 }
             }
-            // Pinning or moving a favourite reorders the row under the user's feet: keep the card
-            // they were on in view, or it would be scrolled off — and the focus, sent back to it
-            // when the menu closes, would land nowhere.
+            // Pinning or moving a favourite reorders the dock under the user's feet: keep the
+            // card they were on in view, or it would be scrolled off — and the focus, sent back
+            // to it when the menu closes, would land nowhere.
             val order = favourites.map { it.id }
             LaunchedEffect(order) {
                 val index = order.indexOf(favouritesMemory.lastId)
@@ -687,54 +670,29 @@ private fun Hub(
                 }
                 if (!shown) favouritesState.scrollToItem(index)
             }
-            if (favourites.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .onFocusChanged { if (it.hasFocus) appsFocused = true }
-                        // Rise into the space the widgets vacate; dim under the widget spotlight.
-                        .graphicsLayer {
-                            translationY = -collapse * bandHeight / 2f
-                            alpha = 1f - 0.75f * spotlight
-                        },
-                ) {
-                    // The row's header: the focused favourite's name (the hub has no hero band), else
-                    // the row's title — "Favourites" once something is pinned, until then honestly
-                    // just the most used. A fixed height, so the centred hub never shifts.
-                    val pinnedAny = favourites.any { it.id in pinned }
-                    Box(
-                        modifier = Modifier.height(56.dp).padding(start = 48.dp),
-                        contentAlignment = Alignment.BottomStart,
-                    ) {
-                        if (focused != null && focused in favourites) {
-                            HeroText(focused, allApps, showUsageCount)
-                        } else {
-                            Text(
-                                text = stringResource(if (pinnedAny) R.string.home_favourites else R.string.home_most_used),
-                                color = Muted,
-                                fontSize = 12.sp,
-                            )
-                        }
-                    }
-                    // contentPadding, not an outer margin, so the row clips at the screen edge and
-                    // the end cards can scale up on focus without their border being truncated. The
-                    // vertical padding must clear the focused card's 1.08 scale plus its 2dp border,
-                    // or the row clips the top/bottom edges and the card loses its rounded corners.
-                    LazyRow(
-                        state = favouritesState,
-                        contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 20.dp, bottom = 20.dp),
-                        // Centred when the cards fit (few apps); from the left edge once it scrolls.
-                        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                        modifier = Modifier.fillMaxWidth().rememberFocus(favouritesMemory),
-                    ) {
-                        items(favourites, key = { it.id }) { shortcut ->
-                            AppCard(
-                                shortcut, showAppLabels, onLaunch, onLongPress,
-                                { favouritesMemory.lastId = it.id; onFocus(it) },
-                                Modifier.width(cardWidth).focusTarget(favouritesMemory, shortcut.id).trackFocus(favouritesMemory),
-                                pinned = shortcut.id in pinned,
-                            )
-                        }
-                    }
+            // contentPadding, not an outer margin, so the dock clips at the screen edge and the
+            // end cards can scale up on focus without their border being truncated. The
+            // vertical padding must clear the focused card's 1.08 scale plus its 2dp border.
+            LazyRow(
+                state = favouritesState,
+                contentPadding = PaddingValues(start = 48.dp, end = 48.dp, top = 16.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(dockFocus)
+                    .onFocusChanged { dockFocused = it.hasFocus }
+                    .rememberFocus(favouritesMemory),
+            ) {
+                items(favourites, key = { it.id }) { shortcut ->
+                    AppCard(
+                        shortcut, showAppLabels, onLaunch, onLongPress,
+                        { favouritesMemory.lastId = it.id; onFocus(it) },
+                        Modifier
+                            .width((cardSize.favouriteWidthDp + 20).dp)
+                            .focusTarget(favouritesMemory, shortcut.id)
+                            .trackFocus(favouritesMemory),
+                        pinned = shortcut.id in pinned,
+                    )
                 }
             }
         }
@@ -852,7 +810,6 @@ private fun WidgetZone(
 private fun AppsGrid(
     shortcuts: List<Shortcut>,
     cardSize: CardSize,
-    tabsFocus: FocusRequester,
     showAppLabels: Boolean,
     onLaunch: (Shortcut) -> Unit,
     onLongPress: (Shortcut) -> Unit,
@@ -868,15 +825,14 @@ private fun AppsGrid(
         contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // DPAD-up from the top row goes to the tabs, not the settings orb; deeper rows keep
-        // their natural up navigation within the grid.
+        // Nothing above the top row (the rail is to the left): Up there is kept, so the focus
+        // doesn't drift onto the rail; deeper rows keep their natural up navigation.
         modifier = Modifier
             .rememberFocus(memory)
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
                     focusedIndex in 0 until cardSize.columns
                 ) {
-                    tabsFocus.requestFocus()
                     true
                 } else {
                     false
@@ -899,7 +855,6 @@ private fun AppsGrid(
 private fun SourcesGrid(
     sources: List<TvSource>,
     cardSize: CardSize,
-    tabsFocus: FocusRequester,
     onOpen: (TvSource) -> Unit,
 ) {
     var focusedIndex by remember { mutableStateOf(-1) }
@@ -914,7 +869,6 @@ private fun SourcesGrid(
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
                     focusedIndex in 0 until cardSize.columns
                 ) {
-                    tabsFocus.requestFocus()
                     true
                 } else {
                     false
