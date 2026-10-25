@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -125,16 +124,16 @@ fun TvMenu(
                     SolidColor(Color.Black.copy(alpha = 0.45f))
                 }
             ),
-        contentAlignment = if (docked) Alignment.CenterStart else Alignment.Center,
+        contentAlignment = if (docked) Alignment.TopStart else Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .then(
-                    // Docked: the rail's own place and shape, opened wider — the settings are
-                    // the rail turned into a panel. Else a dialog in the middle of the screen.
+                    // Docked: from the top of the rail's place, in its shape, opened wider —
+                    // the settings are the rail turned into a panel — and only as tall as its
+                    // rows (it scrolls past the screen's height). Else a dialog in the middle.
                     if (docked) {
                         Modifier
-                            .fillMaxHeight()
                             .padding(start = 12.dp, top = 24.dp, bottom = 24.dp)
                             .width(380.dp)
                     } else {
