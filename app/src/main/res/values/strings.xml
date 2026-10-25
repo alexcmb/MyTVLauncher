@@ -159,5 +159,5 @@
     <string name="phase_night">Night</string>
     <string name="wallpaper_apply">Apply</string>
     <string name="wallpaper_remove">Remove from the library</string>
-    <string name="home_widgets_hint">Widgets</string>
+    <string name="widgets_show">Show widgets</string>
 </resources>

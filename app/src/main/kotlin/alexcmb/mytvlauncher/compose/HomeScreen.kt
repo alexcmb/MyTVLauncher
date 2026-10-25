@@ -97,7 +97,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -207,6 +206,7 @@ fun HomeScreen(
     startupTab: String,
     homeRequests: Int,
     pinnedApps: List<String>,
+    showWidgets: Boolean,
     contentHidden: Boolean = false,
 ) {
     // The selection is held by key, not position, so a tab moved, hidden or added in front
@@ -235,12 +235,8 @@ fun HomeScreen(
         }
         runCatching { tabsFocus.requestFocus() }
     }
-    // The hub's widgets wait out of sight until asked for (Up from the dock), and go again
-    // when the focus goes back down to the dock, to the rail, or to another tab.
-    var widgetsShown by remember { mutableStateOf(false) }
-    LaunchedEffect(railFocused, selectedTab) {
-        if (railFocused || selectedTab != 0) widgetsShown = false
-    }
+    // The hub's widgets show at the top when the setting says so (Settings → Widgets).
+    val widgetsShown = showWidgets && widgets.isNotEmpty()
 
     // At start, and on HOME pressed while the launcher is up (or to come back to it): the
     // startup tab, the focus on the dock if that's the hub, else on its rail row — the card
@@ -396,7 +392,6 @@ fun HomeScreen(
                             dockFocus = dockFocus,
                             railFocus = tabsFocus,
                             widgetsShown = widgetsShown,
-                            onWidgetsShown = { widgetsShown = it },
                         )
                         shown is SourcesTab -> Box(Modifier.padding(top = HeaderHeight)) {
                             SourcesGrid(shown.sources, cardSize, gridFocus, { runCatching { tabsFocus.requestFocus() } }, onOpenSource)
@@ -559,7 +554,6 @@ private fun Hub(
     dockFocus: FocusRequester,
     railFocus: FocusRequester,
     widgetsShown: Boolean,
-    onWidgetsShown: (Boolean) -> Unit,
 ) {
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
@@ -571,16 +565,8 @@ private fun Hub(
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    // Up brought the widgets in: once they're laid out, carry the focus up into them.
-    val focusManager = LocalFocusManager.current
-    var enterWidgets by remember { mutableStateOf(false) }
-    LaunchedEffect(enterWidgets) {
-        if (!enterWidgets) return@LaunchedEffect
-        withFrameNanos { }
-        withFrameNanos { }
-        focusManager.moveFocus(FocusDirection.Up)
-        enterWidgets = false
-    }
+    // The widget band, so Up from the dock lands in it whatever card it's on.
+    val widgetsFocus = remember { FocusRequester() }
 
     Box(
         Modifier
@@ -601,27 +587,25 @@ private fun Hub(
                     Key.DirectionLeft -> (atDockStart || nowPlayingFocused).also {
                         if (it) runCatching { railFocus.requestFocus() }
                     }
+                    // Up: dock → widgets (when shown) → media card. Down: the way back.
                     Key.DirectionUp -> when {
                         nowPlayingFocused -> true
                         focusedWidget != null -> { toMedia(); true }
-                        dockFocused && widgets.isNotEmpty() && !widgetsShown -> {
-                            onWidgetsShown(true)
-                            enterWidgets = true
-                            true
-                        }
-                        dockFocused && widgets.isNotEmpty() -> false
+                        dockFocused && widgetsShown -> { runCatching { widgetsFocus.requestFocus() }; true }
                         dockFocused -> { toMedia(); true }
                         else -> false
                     }
-                    Key.DirectionDown -> (nowPlayingFocused && !widgetsShown).also {
-                        if (it) runCatching { dockFocus.requestFocus() }
+                    Key.DirectionDown -> when {
+                        nowPlayingFocused && widgetsShown -> { runCatching { widgetsFocus.requestFocus() }; true }
+                        nowPlayingFocused || focusedWidget != null -> { runCatching { dockFocus.requestFocus() }; true }
+                        else -> false
                     }
                     else -> false
                 }
             },
     ) {
         AnimatedVisibility(
-            visible = widgetsShown && widgets.isNotEmpty(),
+            visible = widgetsShown,
             enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { -it / 3 },
             exit = fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 3 },
             modifier = Modifier.align(Alignment.TopCenter).padding(top = HeaderHeight),
@@ -633,7 +617,9 @@ private fun Hub(
                         // Widgets aren't apps: drop the app backdrop and name back to idle.
                         if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
                     }
-                    .padding(start = RailStart, end = 48.dp),
+                    .padding(start = RailStart, end = 48.dp)
+                    .focusRequester(widgetsFocus)
+                    .focusGroup(),
             ) {
                 // Always three zones, in this order (an empty one takes no room): see WidgetBand.
                 val onFocused = { id: Int -> focusedWidget = id }
@@ -664,15 +650,12 @@ private fun Hub(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(bottom = 20.dp)
-                // Back down to the dock: the widgets tuck away.
-                .onFocusChanged { if (it.hasFocus) onWidgetsShown(false) }
                 // Dimmed under the widget spotlight.
                 .graphicsLayer { alpha = 1f - 0.75f * spotlight },
         ) {
             // The dock's header: the focused favourite's name, else the row's title —
             // "Favourites" once something is pinned, until then honestly just the most used.
-            // A fixed height, so the dock never shifts as the focus moves. On the right, a
-            // hint that there are widgets above while they're tucked away.
+            // A fixed height, so the dock never shifts as the focus moves.
             val pinnedAny = favourites.any { it.id in pinned }
             Row(
                 modifier = Modifier.fillMaxWidth().height(64.dp).padding(start = RailStart, end = 48.dp),
@@ -687,17 +670,6 @@ private fun Hub(
                             color = Muted,
                             fontSize = 12.sp,
                         )
-                    }
-                }
-                if (widgets.isNotEmpty() && !widgetsShown) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            painterResource(R.drawable.ic_expand_less),
-                            contentDescription = null,
-                            tint = Muted,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(stringResource(R.string.home_widgets_hint), color = Muted, fontSize = 12.sp)
                     }
                 }
             }

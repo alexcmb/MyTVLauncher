@@ -188,6 +188,7 @@ class LauncherActivity : ComponentActivity() {
     private var cardSize by mutableStateOf(CardSize.MEDIUM)
     private var showUsageCount by mutableStateOf(true)
     private var showAppLabels by mutableStateOf(false)
+    private var showWidgets by mutableStateOf(true)
     private var tabOrder by mutableStateOf<List<String>>(emptyList())
     private var hiddenTabs by mutableStateOf<Set<String>>(emptySet())
     private var startupTab by mutableStateOf(HomeTabs.HOME_KEY)
@@ -222,6 +223,7 @@ class LauncherActivity : ComponentActivity() {
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
         showAppLabels = settings.showAppLabels()
+        showWidgets = settings.showWidgets()
         tabOrder = settings.tabOrder()
         hiddenTabs = settings.hiddenTabs()
         startupTab = settings.startupTab() ?: HomeTabs.HOME_KEY
@@ -293,6 +295,7 @@ class LauncherActivity : ComponentActivity() {
                         startupTab = startupTab,
                         homeRequests = homeRequests,
                         pinnedApps = pinnedApps,
+                        showWidgets = showWidgets,
                         // Sleep mode and the gallery leave the background on its own: in the
                         // gallery, that's the live preview of the card just applied.
                         contentHidden = ambient || galleryOpen,
@@ -914,7 +917,13 @@ class LauncherActivity : ComponentActivity() {
      * the hub opens that same menu directly; this list is the discoverable way in.)
      */
     private fun showWidgetsMenu() = openMenu {
-        val items = mutableListOf<MenuItem>()
+        // Shown at the top of the home screen, or put away; they stay hosted either way.
+        val items = mutableListOf(
+            toggleItem(R.string.widgets_show, showWidgets) {
+                settings.setShowWidgets(it)
+                showWidgets = it
+            },
+        )
         // The band is capped, so only offer "add" while there's room for another.
         if (widgetSlot.canAddMore()) {
             items += MenuItem(getString(R.string.widget_add), submenu = true) { showWidgetPicker() }
