@@ -119,18 +119,26 @@ class NowPlayingController(private val context: Context) {
         onChanged?.invoke()
     }
 
-    /** Prefer a session that's actually playing; fall back to any with something loaded. */
-    private fun pick(controllers: List<MediaController>): MediaController? =
-        controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-            ?: controllers.firstOrNull { it.metadata != null }
+    /**
+     * Prefer a session that's playing (or loading its next track); fall back to any with a
+     * title. Sessions without one are skipped: a player that's open but empty (VLC on its
+     * library, say) keeps an active session with blank metadata, and picking it would hide
+     * the card while another app has a track paused.
+     */
+    private fun pick(controllers: List<MediaController>): MediaController? {
+        val titled = controllers.filter { titleOf(it.metadata) != null }
+        return titled.firstOrNull { it.playbackState?.state in LIVE_STATES } ?: titled.firstOrNull()
+    }
+
+    private fun titleOf(meta: MediaMetadata?): String? = meta?.let {
+        (it.getText(MediaMetadata.METADATA_KEY_TITLE) ?: it.getText(MediaMetadata.METADATA_KEY_DISPLAY_TITLE))
+            ?.toString()?.trim()?.ifBlank { null }
+    }
 
     fun nowPlaying(): NowPlaying? {
         val c = controller ?: return null
         val meta = c.metadata ?: return null
-        val title = (meta.getText(MediaMetadata.METADATA_KEY_TITLE)
-            ?: meta.getText(MediaMetadata.METADATA_KEY_DISPLAY_TITLE))
-            ?.toString()?.trim().orEmpty()
-        if (title.isBlank()) return null
+        val title = titleOf(meta) ?: return null
         val subtitle = (meta.getText(MediaMetadata.METADATA_KEY_ARTIST)
             ?: meta.getText(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE))
             ?.toString()?.trim()?.ifBlank { null }
@@ -218,6 +226,15 @@ class NowPlayingController(private val context: Context) {
     }
 
     private companion object {
+        /** Playing, or about to: buffering, connecting, skipping to another track. */
+        val LIVE_STATES = setOf(
+            PlaybackState.STATE_PLAYING,
+            PlaybackState.STATE_BUFFERING,
+            PlaybackState.STATE_CONNECTING,
+            PlaybackState.STATE_SKIPPING_TO_NEXT,
+            PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
+            PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM,
+        )
         const val TAG = "NowPlayingController"
         val ART_URI_KEYS = listOf(
             MediaMetadata.METADATA_KEY_ALBUM_ART_URI,
