@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -32,7 +33,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -70,7 +73,12 @@ private val Muted = Color(0xFF9AA0B4)
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: () -> Unit) {
+fun TvMenu(
+    spec: MenuSpec,
+    focusMemory: MutableMap<String, String>,
+    docked: Boolean = false,
+    onDismiss: () -> Unit,
+) {
     BackHandler(onBack = onDismiss)
     val requesters = remember(spec.items.size) { List(spec.items.size) { FocusRequester() } }
     // Keyed on the title (a new level) and the rows' labels (rows added, removed, moved or
@@ -107,18 +115,35 @@ fun TvMenu(spec: MenuSpec, focusMemory: MutableMap<String, String>, onDismiss: (
                     true
                 }
             }
-            // Lighter than an opaque dim, so the glass panel reads as see-through.
+            // Lighter than an opaque dim, so the glass panel reads as see-through. Docked,
+            // only the side the panel is on darkens; the rest of the screen stays in view.
             .fadeInOnce()
-            .background(Color.Black.copy(alpha = 0.45f)),
-        contentAlignment = Alignment.Center,
+            .background(
+                if (docked) {
+                    Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.6f to Color.Transparent)
+                } else {
+                    SolidColor(Color.Black.copy(alpha = 0.45f))
+                }
+            ),
+        contentAlignment = if (docked) Alignment.CenterStart else Alignment.Center,
     ) {
         Column(
             modifier = Modifier
-                .widthIn(min = 280.dp, max = 440.dp)
-                .heightIn(max = 480.dp)
+                .then(
+                    // Docked: the rail's own place and shape, opened wider — the settings are
+                    // the rail turned into a panel. Else a dialog in the middle of the screen.
+                    if (docked) {
+                        Modifier
+                            .fillMaxHeight()
+                            .padding(start = 12.dp, top = 24.dp, bottom = 24.dp)
+                            .width(380.dp)
+                    } else {
+                        Modifier.widthIn(min = 280.dp, max = 440.dp).heightIn(max = 480.dp)
+                    }
+                )
                 // Each level pops in, so going into a submenu reads as moving somewhere.
                 .popIn(spec.title)
-                .glass(RoundedCornerShape(16.dp), opacity = 0.78f)
+                .glass(RoundedCornerShape(if (docked) 28.dp else 16.dp), opacity = if (docked) 0.93f else 0.78f)
                 .padding(vertical = 16.dp, horizontal = 12.dp),
         ) {
             Text(

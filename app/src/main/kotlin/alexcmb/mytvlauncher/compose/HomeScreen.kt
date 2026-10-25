@@ -248,13 +248,17 @@ fun HomeScreen(
         if (!onDock) runCatching { tabsFocus.requestFocus() }
     }
 
-    // Back walks out of the screen: content -> the rail -> its Home row. On Home's row there's
+    // Back walks out of the screen: content -> the rail -> the Home tab. On Home there's
     // nowhere left to go (a launcher must not exit). Menus and sliders register their own
     // handler later, so they still take Back first while they're open.
     BackHandler {
         when {
             !railFocused -> runCatching { tabsFocus.requestFocus() }
-            selectedTab != 0 -> runCatching { homeTabFocus.requestFocus() }
+            selectedTab != 0 -> {
+                selectedKey = tabs[0].key
+                focused = null
+                runCatching { homeTabFocus.requestFocus() }
+            }
         }
     }
 

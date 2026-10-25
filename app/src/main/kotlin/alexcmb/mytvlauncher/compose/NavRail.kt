@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
-import kotlinx.coroutines.delay
 
 // Lighter than the rest of the launcher's muted text: the resting rail sits on the bare
 // background, often bright, with only a thin glass under its icons.
@@ -65,10 +63,10 @@ internal val RailReserve = 64.dp
  * comes in it widens into a panel with the names, over the content (which doesn't move) —
  * a deeper glass, so it reads as a layer above without hiding the screen.
  *
- * As with the tabs it replaces, moving onto a row selects it — after a short pause, so running
- * down the rail (to the settings, say) doesn't switch through every tab on the way, nor make a
- * slow TV lay each one out. Coming in from the content (Left, or Back) always lands on the
- * selected row, whatever row is level with the focus.
+ * Moving along the rail only highlights a row; OK switches to that tab (so looking through
+ * the rail never changes what's on screen behind it). The settings open in this same place,
+ * as a panel down the left edge (TvMenu, docked). Coming in from the content (Left, or Back)
+ * always lands on the selected row, whatever row is level with the focus.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -82,12 +80,6 @@ internal fun NavRail(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var pending by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(pending) {
-        val index = pending ?: return@LaunchedEffect
-        delay(250)
-        onSelect(index)
-    }
     val width by animateDpAsState(if (expanded) RailExpanded else RailCollapsed, tween(220), label = "rail")
     val labels by animateFloatAsState(if (expanded) 1f else 0f, tween(180), label = "labels")
     Column(
@@ -98,7 +90,6 @@ internal fun NavRail(
             .onFocusChanged {
                 // Not while the apps are still loading and the settings are all there is.
                 expanded = it.hasFocus && tabs.isNotEmpty()
-                if (!it.hasFocus) pending = null // left before the pause was up: stay put
             }
             .focusProperties { enter = { tabsFocus } }
             .focusGroup()
@@ -120,9 +111,8 @@ internal fun NavRail(
                     tab is SourcesTab -> RailIcon.Drawable(R.drawable.ic_source_hdmi)
                     else -> RailIcon.Monogram(tab.title)
                 },
-                onFocused = { pending = index },
                 modifier = requesters,
-            ) { pending = null; onSelect(index) }
+            ) { onSelect(index) }
         }
         Spacer(Modifier.weight(1f))
         RailItem(
@@ -130,7 +120,6 @@ internal fun NavRail(
             selected = false,
             labels = labels,
             icon = RailIcon.Drawable(R.drawable.ic_settings),
-            onFocused = { pending = null },
         ) { onSettings() }
     }
 }
@@ -148,7 +137,6 @@ private fun RailItem(
     selected: Boolean,
     labels: Float,
     icon: RailIcon,
-    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -160,10 +148,7 @@ private fun RailItem(
             .padding(horizontal = 8.dp)
             .fillMaxWidth()
             .height(48.dp)
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onFocused()
-            }
+            .onFocusChanged { focused = it.isFocused }
             .trackFocus()
             .clickable { onClick() }
             .background(
