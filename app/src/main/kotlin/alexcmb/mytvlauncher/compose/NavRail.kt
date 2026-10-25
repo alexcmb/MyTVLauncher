@@ -3,6 +3,9 @@ package alexcmb.mytvlauncher.compose
 import alexcmb.mytvlauncher.R
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +34,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -84,7 +89,11 @@ internal fun NavRail(
 ) {
     Box(modifier.padding(RailInset)) {
         tabs.getOrNull(selected)?.let { tab ->
-            Pill(tab.title, iconOf(tab, selected), pillFocus, onExit) { onOpenChange(true) }
+            // Hidden while the menu is open: the menu is the pill, unfolded.
+            Pill(
+                tab.title, iconOf(tab, selected), pillFocus, onExit,
+                Modifier.graphicsLayer { alpha = if (open) 0f else 1f },
+            ) { onOpenChange(true) }
         }
         if (open && tabs.isNotEmpty()) {
             Panel(
@@ -122,12 +131,13 @@ private fun Pill(
     icon: RailIcon,
     focusRequester: FocusRequester,
     onExit: () -> Unit,
+    modifier: Modifier,
     onOpen: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val tint = if (focused) Color.White else Idle
     Row(
-        modifier = Modifier
+        modifier = modifier
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .trackFocus()
@@ -172,7 +182,7 @@ private fun Panel(
     Column(
         modifier = Modifier
             .width(RailExpanded)
-            .popIn()
+            .unfold()
             .glass(RailShape, opacity = RailGlass)
             .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -204,6 +214,23 @@ private fun Panel(
             icon = RailIcon.Drawable(R.drawable.ic_settings),
             modifier = Modifier.trapped(tabs.size),
         ) { onSettings() }
+    }
+}
+
+/**
+ * The menu opening out of the pill: it grows from the pill's top left corner, to its full
+ * size, as it fades in.
+ */
+@Composable
+private fun Modifier.unfold(): Modifier {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, tween(durationMillis = 200, easing = FastOutSlowInEasing)) }
+    return graphicsLayer {
+        val p = progress.value
+        transformOrigin = TransformOrigin(0f, 0f)
+        alpha = p
+        scaleX = 0.4f + 0.6f * p
+        scaleY = 0.25f + 0.75f * p
     }
 }
 
