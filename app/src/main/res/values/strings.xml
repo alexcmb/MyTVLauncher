@@ -131,6 +131,17 @@
     <string name="background_video_remove">Remove video</string>
     <string name="background_video_error">The TV can\'t play this video (try an H.264 or HEVC MP4)</string>
     <string name="video_fit">Video framing</string>
+    <string name="background_dynamic">Dynamic</string>
+    <string name="dynamic_pick">Choose a HEIC file…</string>
+    <string name="dynamic_city">City (for the sun)</string>
+    <string name="dynamic_mode">Follows</string>
+    <string name="dynamic_mode_time">the time</string>
+    <string name="dynamic_mode_sun">the sun</string>
+    <string name="dynamic_remove">Remove dynamic background</string>
+    <string name="dynamic_importing">Importing the dynamic background…</string>
+    <string name="dynamic_not_dynamic">This file is not a dynamic wallpaper</string>
+    <string name="dynamic_unsupported">HEIC wallpapers need Android 9 or later</string>
+    <string name="dynamic_failed">The dynamic background could not be imported</string>
     <string name="background_image_none">None</string>
     <string name="action_hidden_apps_label">Hidden apps</string>
     <string name="widget_menu_size">Size</string>

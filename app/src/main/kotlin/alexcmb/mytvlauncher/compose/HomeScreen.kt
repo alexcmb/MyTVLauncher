@@ -165,6 +165,17 @@ data class WidgetTile(
 /** Title-bar clock preferences; the live values are derived inside the bar. */
 data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
 
+/**
+ * An imported dynamic wallpaper, as the home screen draws it: its schedule, where each
+ * picture is, the city a sun schedule follows, and a version that changes on each import.
+ */
+data class DynamicWallpaper(
+    val schedule: alexcmb.mytvlauncher.dynamic.DynamicSchedule,
+    val frame: (Int) -> java.io.File,
+    val city: alexcmb.mytvlauncher.dynamic.City,
+    val version: Int,
+)
+
 /** The derived clock values shown on the left of the title bar. */
 private data class ClockValues(val time: String, val date: String?, val greeting: String?)
 
@@ -177,6 +188,7 @@ fun HomeScreen(
     background: BackgroundStyle,
     backgroundImage: ImageBitmap?,
     backgroundVideo: Uri?,
+    dynamicWallpaper: DynamicWallpaper?,
     backgroundIntensity: Int,
     wallpaperFit: WallpaperFit,
     cardSize: CardSize,
@@ -286,6 +298,22 @@ fun HomeScreen(
                 BackgroundStyle.VIDEO -> if (backgroundVideo != null) {
                     VideoBackdrop(backgroundVideo, wallpaperFit)
                     // Brightness, as for an image: more intensity → thinner scrim.
+                    Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
+                }
+                BackgroundStyle.DYNAMIC -> if (dynamicWallpaper != null) {
+                    DynamicBackdrop(
+                        dynamicWallpaper.schedule,
+                        dynamicWallpaper.frame,
+                        dynamicWallpaper.city,
+                        when (wallpaperFit) {
+                            WallpaperFit.FILL -> ContentScale.Crop
+                            WallpaperFit.STRETCH -> ContentScale.FillBounds
+                            WallpaperFit.FIT -> ContentScale.Fit
+                            WallpaperFit.CENTER -> ContentScale.None
+                            WallpaperFit.SPAN -> ContentScale.FillWidth
+                        },
+                        dynamicWallpaper.version,
+                    )
                     Box(Modifier.fillMaxSize().background(Background.copy(alpha = lerpF(0.8f, 0.2f, intensity))))
                 }
                 BackgroundStyle.SOLID -> Unit // the tinted base is the whole look

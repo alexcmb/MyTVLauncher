@@ -3,6 +3,10 @@ package alexcmb.mytvlauncher
 import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.compose.AmbientScreen
+import alexcmb.mytvlauncher.compose.DynamicWallpaper
+import alexcmb.mytvlauncher.dynamic.Cities
+import alexcmb.mytvlauncher.dynamic.DynamicSchedule
+import alexcmb.mytvlauncher.dynamic.DynamicWallpaperImporter
 import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
@@ -148,6 +152,10 @@ class LauncherActivity : ComponentActivity() {
     private var backgroundIntensity by mutableStateOf(SettingsRepository.BG_INTENSITY_DEFAULT)
     private var backgroundImage by mutableStateOf<ImageBitmap?>(null)
     private var backgroundVideo by mutableStateOf<Uri?>(null)
+    private val dynamicImporter by lazy { DynamicWallpaperImporter(applicationContext) }
+    private var dynamicSchedule by mutableStateOf<DynamicSchedule?>(null)
+    private var dynamicCity by mutableStateOf(Cities.DEFAULT)
+    private var dynamicVersion by mutableStateOf(0)
     private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
     // Live value of the background-brightness slider while it's open, else null.
     private var backgroundAdjust by mutableStateOf<Int?>(null)
@@ -182,6 +190,8 @@ class LauncherActivity : ComponentActivity() {
         backgroundIntensity = settings.backgroundIntensity()
         wallpaperFit = settings.wallpaperFit()
         backgroundVideo = settings.backgroundVideoUri()?.let(Uri::parse)
+        dynamicSchedule = settings.dynamicSchedule()?.let(DynamicSchedule::decode)
+        dynamicCity = Cities.named(settings.dynamicCity())
         loadBackgroundImage()
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
@@ -230,6 +240,9 @@ class LauncherActivity : ComponentActivity() {
                         background = background,
                         backgroundImage = backgroundImage,
                         backgroundVideo = backgroundVideo,
+                        dynamicWallpaper = dynamicSchedule?.let {
+                            DynamicWallpaper(it, dynamicImporter::frame, dynamicCity, dynamicVersion)
+                        },
                         backgroundIntensity = backgroundIntensity,
                         wallpaperFit = wallpaperFit,
                         cardSize = cardSize,
@@ -454,6 +467,30 @@ class LauncherActivity : ComponentActivity() {
             )
             REQUEST_PICK_WALLPAPER -> if (granted) onWallpaperPicked(data)
             REQUEST_PICK_VIDEO -> if (granted) onVideoPicked(data)
+            REQUEST_PICK_DYNAMIC -> if (granted) data?.data?.let(::importDynamic)
+        }
+    }
+
+    /**
+     * Imports a dynamic HEIC off the main thread: its pictures are extracted at 1080p into the
+     * app's storage (no need to keep access to the original), then it becomes the background.
+     */
+    private fun importDynamic(uri: Uri) {
+        toast(R.string.dynamic_importing)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { dynamicImporter.import(uri) }
+            when (result) {
+                is DynamicWallpaperImporter.Result.Done -> {
+                    settings.setDynamicSchedule(DynamicSchedule.encode(result.schedule))
+                    settings.setBackground(BackgroundStyle.DYNAMIC)
+                    dynamicSchedule = result.schedule
+                    dynamicVersion++
+                    background = BackgroundStyle.DYNAMIC
+                }
+                DynamicWallpaperImporter.Result.NotDynamic -> toast(R.string.dynamic_not_dynamic)
+                DynamicWallpaperImporter.Result.Unsupported -> toast(R.string.dynamic_unsupported)
+                DynamicWallpaperImporter.Result.Failed -> toast(R.string.dynamic_failed)
+            }
         }
     }
 
@@ -1014,6 +1051,7 @@ class LauncherActivity : ComponentActivity() {
             BackgroundStyle.SOLID -> R.string.background_solid
             BackgroundStyle.WALLPAPER -> R.string.background_wallpaper
             BackgroundStyle.VIDEO -> R.string.background_video
+            BackgroundStyle.DYNAMIC -> R.string.background_dynamic
             BackgroundStyle.AURORA -> R.string.background_aurora
         }
     )
@@ -1032,6 +1070,7 @@ class LauncherActivity : ComponentActivity() {
     private fun showBackgroundMenu() = openMenu {
         val hasImage = settings.backgroundImageUri() != null
         val hasVideo = backgroundVideo != null
+        val hasDynamic = dynamicSchedule != null
         MenuSpec(
             title = getString(R.string.action_background),
             items = listOf(
@@ -1051,6 +1090,11 @@ class LauncherActivity : ComponentActivity() {
                     submenu = true,
                 ) { showVideoMenu() },
                 MenuItem(
+                    getString(R.string.background_dynamic),
+                    value = getString(if (hasDynamic) R.string.background_image_set else R.string.background_image_none),
+                    submenu = true,
+                ) { showDynamicMenu() },
+                MenuItem(
                     getString(R.string.background_brightness),
                     value = "$backgroundIntensity %",
                 ) { backgroundAdjust = settings.backgroundIntensity() },
@@ -1067,9 +1111,11 @@ class LauncherActivity : ComponentActivity() {
             BackgroundStyle.SOLID,
             BackgroundStyle.WALLPAPER,
             BackgroundStyle.VIDEO,
+            BackgroundStyle.DYNAMIC,
         ).filter {
             (it != BackgroundStyle.WALLPAPER || settings.backgroundImageUri() != null) &&
-                (it != BackgroundStyle.VIDEO || backgroundVideo != null)
+                (it != BackgroundStyle.VIDEO || backgroundVideo != null) &&
+                (it != BackgroundStyle.DYNAMIC || dynamicSchedule != null)
         }
         MenuSpec(
             title = getString(R.string.background_style),
@@ -1126,6 +1172,72 @@ class LauncherActivity : ComponentActivity() {
             }
         }
         MenuSpec(getString(R.string.background_video), items)
+    }
+
+    /**
+     * The dynamic wallpaper: import a HEIC, the city a sun-driven one follows, framing, remove.
+     * The city row says what it's for: a by-time file ignores it.
+     */
+    private fun showDynamicMenu() = openMenu {
+        val schedule = dynamicSchedule
+        val items = mutableListOf(
+            MenuItem(getString(R.string.dynamic_pick)) { pickDynamic() },
+            MenuItem(
+                getString(R.string.dynamic_city),
+                value = dynamicCity.name,
+                submenu = true,
+            ) { showCityMenu() },
+        )
+        if (schedule != null) {
+            items += MenuItem(
+                getString(R.string.dynamic_mode),
+                value = getString(
+                    if (schedule is DynamicSchedule.BySun) R.string.dynamic_mode_sun else R.string.dynamic_mode_time
+                ),
+            ) {}
+            items += MenuItem(
+                getString(R.string.wallpaper_fit),
+                value = wallpaperFitName(wallpaperFit),
+                submenu = true,
+            ) { showWallpaperFitMenu() }
+            items += MenuItem(getString(R.string.dynamic_remove), divider = true) {
+                dynamicImporter.clear()
+                settings.setDynamicSchedule(null)
+                dynamicSchedule = null
+                if (background == BackgroundStyle.DYNAMIC) {
+                    settings.setBackground(BackgroundStyle.AMBIENT)
+                    background = BackgroundStyle.AMBIENT
+                }
+            }
+        }
+        MenuSpec(getString(R.string.background_dynamic), items)
+    }
+
+    private fun showCityMenu() = openMenu {
+        MenuSpec(
+            title = getString(R.string.dynamic_city),
+            items = Cities.ALL.map { city ->
+                MenuItem(city.name, selected = city == dynamicCity) {
+                    settings.setDynamicCity(city.name)
+                    dynamicCity = city
+                }
+            },
+        )
+    }
+
+    /** The document picker for a dynamic HEIC (providers label those image/heic or image/heif). */
+    private fun pickDynamic() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("image/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/heic", "image/heif", "image/*"))
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, REQUEST_PICK_DYNAMIC)
+        } catch (e: ActivityNotFoundException) {
+            Log.w(TAG, "No document picker on this device", e)
+            toast(R.string.background_no_picker)
+        }
     }
 
     /** Opens the system document picker for a video (MP4, WebM…) to loop behind the launcher. */
@@ -1414,6 +1526,7 @@ class LauncherActivity : ComponentActivity() {
         const val STATE_PENDING_WIDGET = "pending_widget"
         const val REQUEST_PICK_WALLPAPER = 2001
         const val REQUEST_PICK_VIDEO = 2002
+        const val REQUEST_PICK_DYNAMIC = 2003
         const val IDLE_CHECK_MS = 5_000L
     }
 }
