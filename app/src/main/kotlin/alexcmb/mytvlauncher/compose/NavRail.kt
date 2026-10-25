@@ -169,26 +169,23 @@ private fun Panel(
         withFrameNanos { }
         runCatching { requesters[selected.coerceIn(0, tabs.lastIndex)].requestFocus() }
     }
-    // Something else took the focus (sleep mode, an app opening): don't leave the menu hanging.
-    var hadFocus by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .width(RailExpanded)
-            .onFocusChanged {
-                if (it.hasFocus) hadFocus = true else if (hadFocus) onClose()
-            }
             .popIn()
             .glass(RailShape, opacity = RailGlass)
             .padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // Up and Down go row to row by hand: the panel opens over the widgets, and spatial
+        // search would otherwise jump from a row into a widget underneath it.
         fun Modifier.trapped(index: Int) = this
             .focusRequester(requesters[index])
             .focusProperties {
                 left = FocusRequester.Cancel
                 right = FocusRequester.Cancel
-                if (index == 0) up = FocusRequester.Cancel
-                if (index == requesters.lastIndex) down = FocusRequester.Cancel
+                up = requesters.getOrNull(index - 1) ?: FocusRequester.Cancel
+                down = requesters.getOrNull(index + 1) ?: FocusRequester.Cancel
             }
         tabs.forEachIndexed { index, tab ->
             RailItem(tab.title, index == selected, iconOf(tab, index), Modifier.trapped(index)) { onSelect(index) }

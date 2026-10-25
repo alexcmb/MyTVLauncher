@@ -222,6 +222,14 @@ fun HomeScreen(
     val gridFocus = remember { FocusRequester() }
     var railFocused by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    // Something else took the focus while the menu was open (sleep mode, an overlay): close
+    // it. Checked a moment later, so the focus passing from one of its rows to the next
+    // never counts as leaving.
+    LaunchedEffect(railFocused, menuOpen) {
+        if (!menuOpen || railFocused) return@LaunchedEffect
+        delay(300)
+        menuOpen = false
+    }
     // Into the content of the tab on screen (the dock, or the grid's remembered card).
     fun focusContent(): Boolean =
         runCatching { (if (selectedTab == 0) dockFocus else gridFocus).requestFocus() }.isSuccess
@@ -576,23 +584,27 @@ private fun Hub(
             // the widgets themselves) there's nothing above: the press is kept, so the focus
             // doesn't drift onto the rail. Previewed, so it wins even over an embedded widget
             // view that might swallow the press.
-            // The way up from the dock: the widgets (brought in on the first press), then the
-            // media card at the top, then nothing. Left from the dock's first card or from
-            // the media card goes to the menu pill, which is above them rather than beside.
+            // Left from the dock's first card, the band's first widget or the media card goes
+            // to the menu pill, which is above them rather than beside.
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val atDockStart = dockFocused && focused != null && focused.id == favourites.firstOrNull()?.id
+                // A widget on the left of the band: nothing further left but the pill above.
+                val atBandStart = focusedWidget != null &&
+                    focusedWidget == widgets.firstOrNull { it.alignment == WidgetAlignment.START }?.id
+                fun toPill() = runCatching { railFocus.requestFocus() }.isSuccess
                 fun toMedia() = nowPlaying != null && runCatching { nowPlayingFocus.requestFocus() }.isSuccess
                 when (event.key) {
-                    Key.DirectionLeft -> (atDockStart || nowPlayingFocused).also {
-                        if (it) runCatching { railFocus.requestFocus() }
+                    Key.DirectionLeft -> (atDockStart || atBandStart || nowPlayingFocused).also {
+                        if (it) toPill()
                     }
-                    // Up: dock → widgets (when shown) → media card. Down: the way back.
+                    // Up: dock → widgets (when shown) → media card → the menu pill, whichever
+                    // of those are there. Down: the way back.
                     Key.DirectionUp -> when {
-                        nowPlayingFocused -> true
-                        focusedWidget != null -> { toMedia(); true }
+                        nowPlayingFocused -> { toPill(); true }
+                        focusedWidget != null -> { toMedia() || toPill(); true }
                         dockFocused && widgetsShown -> { runCatching { widgetsFocus.requestFocus() }; true }
-                        dockFocused -> { toMedia(); true }
+                        dockFocused -> { toMedia() || toPill(); true }
                         else -> false
                     }
                     Key.DirectionDown -> when {

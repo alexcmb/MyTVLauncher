@@ -177,15 +177,17 @@ fun TvMenu(
                     }
                     // Trap the focus inside the menu: left/right have nowhere to go here and
                     // would otherwise escape to the launcher behind the scrim, and so would up
-                    // off the first row or down off the last. Cancel those moves; up/down
-                    // between rows still works. Back is the only way out.
+                    // off the first row or down off the last. Cancel those moves. Back is the
+                    // only way out.
                     val rowModifier = Modifier
                         .focusRequester(requesters[index])
                         .focusProperties {
                             left = FocusRequester.Cancel
                             right = FocusRequester.Cancel
-                            if (index == 0) up = FocusRequester.Cancel
-                            if (index == spec.items.lastIndex) down = FocusRequester.Cancel
+                            // Row to row by hand: a docked menu sits over the widgets, and
+                            // spatial search could jump from a row into one underneath.
+                            up = requesters.getOrNull(index - 1) ?: FocusRequester.Cancel
+                            down = requesters.getOrNull(index + 1) ?: FocusRequester.Cancel
                         }
                     MenuRow(item, docked, rowModifier) { focusMemory[spec.title] = item.label }
                 }
