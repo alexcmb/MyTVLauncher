@@ -10,8 +10,6 @@ No ads. No tracking. No account. Works offline.
 
 </div>
 
-![The home hub](docs/home.png)
-
 ## What it does
 
 **A home after Apple TV.** The top of the screen is left to your background; everything sits in
