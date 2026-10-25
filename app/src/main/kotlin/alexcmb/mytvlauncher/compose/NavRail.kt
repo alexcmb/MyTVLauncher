@@ -86,13 +86,15 @@ internal fun NavRail(
     onSettings: () -> Unit,
     onExit: () -> Unit,
     modifier: Modifier = Modifier,
+    covered: Boolean = false,
 ) {
     Box(modifier.padding(RailInset)) {
         tabs.getOrNull(selected)?.let { tab ->
-            // Hidden while the menu is open: the menu is the pill, unfolded.
+            // Hidden while the menu is open (the menu is the pill, unfolded) or while the
+            // settings sit in its place ([covered]); it keeps the focus for their return.
             Pill(
                 tab.title, iconOf(tab, selected), pillFocus, onExit,
-                Modifier.graphicsLayer { alpha = if (open) 0f else 1f },
+                Modifier.graphicsLayer { alpha = if (open || covered) 0f else 1f },
             ) { onOpenChange(true) }
         }
         if (open && tabs.isNotEmpty()) {
