@@ -215,13 +215,26 @@ fun HomeScreen(
     val selectedTab = tabs.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
     var focused by remember { mutableStateOf<Shortcut?>(null) }
     val tab = tabs.getOrNull(selectedTab)
-    // The rail's selected row: where Left and Back from the content land.
+    // The menu's pill, top left: where Left, Up and Back from the edge of the content land.
     val tabsFocus = remember { FocusRequester() }
-    // The Home row, so Back from another tab's row can return to it.
-    val homeTabFocus = remember { FocusRequester() }
-    // The hub's dock, where the focus starts.
+    // The hub's dock, where the focus starts, and the grid of the other tabs.
     val dockFocus = remember { FocusRequester() }
+    val gridFocus = remember { FocusRequester() }
     var railFocused by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    // Into the content of the tab on screen (the dock, or the grid's remembered card).
+    fun focusContent(): Boolean =
+        runCatching { (if (selectedTab == 0) dockFocus else gridFocus).requestFocus() }.isSuccess
+    // A tab picked in the menu: once its content is laid out, the focus goes into it.
+    var contentFocusRequests by remember { mutableStateOf(0) }
+    LaunchedEffect(contentFocusRequests) {
+        if (contentFocusRequests == 0) return@LaunchedEffect
+        repeat(10) {
+            withFrameNanos { }
+            if (focusContent()) return@LaunchedEffect
+        }
+        runCatching { tabsFocus.requestFocus() }
+    }
     // The hub's widgets wait out of sight until asked for (Up from the dock), and go again
     // when the focus goes back down to the dock, to the rail, or to another tab.
     var widgetsShown by remember { mutableStateOf(false) }
@@ -237,7 +250,7 @@ fun HomeScreen(
         selectedKey = startupTab
         focused = null
         // The dock may take a few frames to be laid out (the first apps arrive while the
-        // screen is still settling): try it for a moment before falling back on the rail.
+        // screen is still settling): try it for a moment before falling back on the pill.
         val onHub = tabs.indexOfFirst { it.key == startupTab }.coerceAtLeast(0) == 0
         var onDock = false
         repeat(if (onHub) 10 else 1) {
@@ -248,16 +261,15 @@ fun HomeScreen(
         if (!onDock) runCatching { tabsFocus.requestFocus() }
     }
 
-    // Back walks out of the screen: content -> the rail -> the Home tab. On Home there's
-    // nowhere left to go (a launcher must not exit). Menus and sliders register their own
-    // handler later, so they still take Back first while they're open.
+    // Back walks out of the screen: content -> the menu's pill -> the Home tab. On Home there's
+    // nowhere left to go (a launcher must not exit). The open menu, the menus and sliders
+    // register their own handler later, so they still take Back first while they're open.
     BackHandler {
         when {
             !railFocused -> runCatching { tabsFocus.requestFocus() }
             selectedTab != 0 -> {
                 selectedKey = tabs[0].key
                 focused = null
-                runCatching { homeTabFocus.requestFocus() }
             }
         }
     }
@@ -343,79 +355,86 @@ fun HomeScreen(
                 label = "content",
             )
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
-                // The grid tabs and the header start past the resting rail; the hub runs
-                // under it, its bottom block lined up on the rail's left edge (the rail only
-                // reaches as far down as its rows).
-                Column(Modifier.fillMaxSize()) {
-                    // The header: the focused app's name on the grid tabs (the hub names it
-                    // above its dock instead), and the clock on the right.
-                    Box(Modifier.fillMaxWidth().height(HeaderHeight)) {
-                        if (selectedTab != 0) {
-                            Box(Modifier.align(Alignment.BottomStart).padding(start = RailReserve + 48.dp, bottom = 8.dp)) {
-                                focused?.let { HeroText(it, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount) }
-                            }
+                // The tab fills the screen: the hub uses all of it (its media card up top, its
+                // dock down below); the grids start under the header. Everything lines up on
+                // the menu pill's left edge.
+                AnimatedContent(
+                    targetState = selectedTab,
+                    // Switching tabs cross-fades with a slight slide, instead of swapping the
+                    // content in a single frame.
+                    transitionSpec = {
+                        val dir = if (targetState > initialState) 1 else -1
+                        (fadeIn(tween(220)) + slideInVertically(tween(220)) { dir * it / 16 }) togetherWith
+                            (fadeOut(tween(140)) + slideOutVertically(tween(140)) { -dir * it / 16 })
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "tab",
+                ) { index ->
+                    val shown = tabs.getOrNull(index)
+                    when {
+                        shown == null -> Unit
+                        // The first tab is a hub: widgets and a few favourites, nothing endless.
+                        index == 0 && shown is AppsTab -> Hub(
+                            widgets = widgets,
+                            favourites = Favourites.pick(shown.shortcuts, pinnedApps, FAVOURITES),
+                            pinned = pinnedApps.toSet(),
+                            cardSize = cardSize,
+                            showAppLabels = showAppLabels,
+                            nowPlaying = nowPlaying,
+                            onLaunch = onLaunch,
+                            onLongPress = onLongPress,
+                            onWidgetLongPress = onWidgetLongPress,
+                            onPlayPause = onPlayPause,
+                            onOpenNowPlaying = onOpenNowPlaying,
+                            onFocus = { focused = it },
+                            onWidgetsFocused = { focused = null },
+                            favouritesState = favouritesState,
+                            favouritesMemory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                            focused = focused,
+                            allApps = shown.shortcuts,
+                            showUsageCount = showUsageCount,
+                            dockFocus = dockFocus,
+                            railFocus = tabsFocus,
+                            widgetsShown = widgetsShown,
+                            onWidgetsShown = { widgetsShown = it },
+                        )
+                        shown is SourcesTab -> Box(Modifier.padding(top = HeaderHeight)) {
+                            SourcesGrid(shown.sources, cardSize, gridFocus, { runCatching { tabsFocus.requestFocus() } }, onOpenSource)
                         }
-                        Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
-                    }
-                    // Switching tabs slides the content a little the way the focus went on the
-                    // rail (up for a row further down) and cross-fades, instead of swapping it
-                    // in a single frame.
-                    AnimatedContent(
-                        targetState = selectedTab,
-                        transitionSpec = {
-                            val dir = if (targetState > initialState) 1 else -1
-                            (fadeIn(tween(220)) + slideInVertically(tween(220)) { dir * it / 16 }) togetherWith
-                                (fadeOut(tween(140)) + slideOutVertically(tween(140)) { -dir * it / 16 })
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        label = "tab",
-                    ) { index ->
-                        val shown = tabs.getOrNull(index)
-                        when {
-                            shown == null -> Unit
-                            // The first tab is a hub: widgets and a few favourites, nothing endless.
-                            index == 0 && shown is AppsTab -> Hub(
-                                widgets = widgets,
-                                favourites = Favourites.pick(shown.shortcuts, pinnedApps, FAVOURITES),
-                                pinned = pinnedApps.toSet(),
-                                cardSize = cardSize,
-                                showAppLabels = showAppLabels,
-                                nowPlaying = nowPlaying,
-                                onLaunch = onLaunch,
-                                onLongPress = onLongPress,
-                                onWidgetLongPress = onWidgetLongPress,
-                                onPlayPause = onPlayPause,
-                                onOpenNowPlaying = onOpenNowPlaying,
-                                onFocus = { focused = it },
-                                onWidgetsFocused = { focused = null },
-                                favouritesState = favouritesState,
-                                favouritesMemory = listMemory.getOrPut(shown.title) { FocusMemory() },
-                                focused = focused,
-                                allApps = shown.shortcuts,
-                                showUsageCount = showUsageCount,
-                                dockFocus = dockFocus,
-                                railFocus = tabsFocus,
-                                widgetsShown = widgetsShown,
-                                onWidgetsShown = { widgetsShown = it },
-                            )
-                            shown is SourcesTab -> Box(Modifier.padding(start = RailReserve)) {
-                                SourcesGrid(shown.sources, cardSize, onOpenSource)
-                            }
-                            shown is AppsTab -> Box(Modifier.padding(start = RailReserve)) {
-                                AppsGrid(
-                                    shown.shortcuts, cardSize, showAppLabels, onLaunch, onGridLongPress,
-                                    state = gridStates.getOrPut(shown.title) { LazyGridState() },
-                                    memory = listMemory.getOrPut(shown.title) { FocusMemory() },
-                                ) { focused = it }
-                            }
+                        shown is AppsTab -> Box(Modifier.padding(top = HeaderHeight)) {
+                            AppsGrid(
+                                shown.shortcuts, cardSize, showAppLabels, onLaunch, onGridLongPress,
+                                state = gridStates.getOrPut(shown.title) { LazyGridState() },
+                                memory = listMemory.getOrPut(shown.title) { FocusMemory() },
+                                focusRequester = gridFocus,
+                                onEdge = { runCatching { tabsFocus.requestFocus() } },
+                            ) { focused = it }
                         }
                     }
                 }
+                // The header, over the tab: the focused app's name on the grid tabs (the hub
+                // names it above its dock instead), and the clock on the right.
+                if (selectedTab != 0) {
+                    Box(Modifier.fillMaxWidth().height(HeaderHeight)) {
+                        Box(Modifier.align(Alignment.BottomStart).padding(start = RailStart, bottom = 8.dp)) {
+                            focused?.let { HeroText(it, (tab as? AppsTab)?.shortcuts.orEmpty(), showUsageCount) }
+                        }
+                    }
+                }
+                Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
                 NavRail(
-                    tabs, selectedTab, tabsFocus, homeTabFocus,
-                    onSelect = { selectedKey = tabs[it].key; focused = null },
+                    tabs = tabs,
+                    selected = selectedTab,
+                    pillFocus = tabsFocus,
+                    open = menuOpen,
+                    onOpenChange = { menuOpen = it },
+                    onSelect = {
+                        selectedKey = tabs[it].key
+                        focused = null
+                        contentFocusRequests++
+                    },
                     onSettings = onSettings,
-                    onRight = { selectedTab == 0 && runCatching { dockFocus.requestFocus() }.isSuccess },
+                    onExit = { focusContent() },
                     modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
             }
@@ -571,27 +590,31 @@ private fun Hub(
             // the widgets themselves) there's nothing above: the press is kept, so the focus
             // doesn't drift onto the rail. Previewed, so it wins even over an embedded widget
             // view that might swallow the press.
+            // The way up from the dock: the widgets (brought in on the first press), then the
+            // media card at the top, then nothing. Left from the dock's first card or from
+            // the media card goes to the menu pill, which is above them rather than beside.
             .onPreviewKeyEvent { event ->
-                // The dock lines up under the rail rather than beside it, so Left from its
-                // first card (or from the media card) has nothing to its left: wire it to the
-                // rail.
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
-                    val atLeftEdge = nowPlayingFocused ||
-                        (dockFocused && focused != null && focused.id == favourites.firstOrNull()?.id)
-                    if (atLeftEdge) runCatching { railFocus.requestFocus() }
-                    return@onPreviewKeyEvent atLeftEdge
-                }
-                if (event.type != KeyEventType.KeyDown || event.key != Key.DirectionUp) {
-                    return@onPreviewKeyEvent false
-                }
-                val atTop = nowPlayingFocused || (dockFocused && nowPlaying == null)
-                when {
-                    focusedWidget != null -> true
-                    atTop && widgets.isEmpty() -> true
-                    atTop && !widgetsShown -> {
-                        onWidgetsShown(true)
-                        enterWidgets = true
-                        true
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                val atDockStart = dockFocused && focused != null && focused.id == favourites.firstOrNull()?.id
+                fun toMedia() = nowPlaying != null && runCatching { nowPlayingFocus.requestFocus() }.isSuccess
+                when (event.key) {
+                    Key.DirectionLeft -> (atDockStart || nowPlayingFocused).also {
+                        if (it) runCatching { railFocus.requestFocus() }
+                    }
+                    Key.DirectionUp -> when {
+                        nowPlayingFocused -> true
+                        focusedWidget != null -> { toMedia(); true }
+                        dockFocused && widgets.isNotEmpty() && !widgetsShown -> {
+                            onWidgetsShown(true)
+                            enterWidgets = true
+                            true
+                        }
+                        dockFocused && widgets.isNotEmpty() -> false
+                        dockFocused -> { toMedia(); true }
+                        else -> false
+                    }
+                    Key.DirectionDown -> (nowPlayingFocused && !widgetsShown).also {
+                        if (it) runCatching { dockFocus.requestFocus() }
                     }
                     else -> false
                 }
@@ -601,7 +624,7 @@ private fun Hub(
             visible = widgetsShown && widgets.isNotEmpty(),
             enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { -it / 3 },
             exit = fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 3 },
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = HeaderHeight),
         ) {
             WidgetBand(
                 modifier = Modifier
@@ -610,8 +633,7 @@ private fun Hub(
                         // Widgets aren't apps: drop the app backdrop and name back to idle.
                         if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
                     }
-                    // Clear of the rail, which comes down over the top left corner.
-                    .padding(start = RailReserve + 48.dp, end = 48.dp),
+                    .padding(start = RailStart, end = 48.dp),
             ) {
                 // Always three zones, in this order (an empty one takes no room): see WidgetBand.
                 val onFocused = { id: Int -> focusedWidget = id }
@@ -621,30 +643,32 @@ private fun Hub(
             }
         }
 
+        // What's playing, top centre, level with the clock and the menu pill.
+        if (nowPlaying != null) {
+            NowPlayingCard(
+                nowPlaying = nowPlaying,
+                focusRequester = nowPlayingFocus,
+                onPlayPause = onPlayPause,
+                onOpen = onOpenNowPlaying,
+                onFocusChanged = { isFocused ->
+                    nowPlayingFocused = isFocused
+                    // Not an app: drop the app backdrop and name back to idle.
+                    if (isFocused) onWidgetsFocused()
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 20.dp),
+            )
+        }
+
         Column(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(bottom = 20.dp)
-                // Back down to the media or the dock: the widgets tuck away.
+                // Back down to the dock: the widgets tuck away.
                 .onFocusChanged { if (it.hasFocus) onWidgetsShown(false) }
                 // Dimmed under the widget spotlight.
                 .graphicsLayer { alpha = 1f - 0.75f * spotlight },
         ) {
-            if (nowPlaying != null) {
-                NowPlayingCard(
-                    nowPlaying = nowPlaying,
-                    focusRequester = nowPlayingFocus,
-                    onPlayPause = onPlayPause,
-                    onOpen = onOpenNowPlaying,
-                    onFocusChanged = { isFocused ->
-                        nowPlayingFocused = isFocused
-                        // Not an app: drop the app backdrop and name back to idle.
-                        if (isFocused) onWidgetsFocused()
-                    },
-                    modifier = Modifier.padding(start = RailStart, bottom = 4.dp),
-                )
-            }
             // The dock's header: the focused favourite's name, else the row's title —
             // "Favourites" once something is pinned, until then honestly just the most used.
             // A fixed height, so the dock never shifts as the focus moves. On the right, a
@@ -835,6 +859,8 @@ private fun AppsGrid(
     onLongPress: (Shortcut) -> Unit,
     state: LazyGridState,
     memory: FocusMemory,
+    focusRequester: FocusRequester,
+    onEdge: () -> Unit,
     onFocus: (Shortcut) -> Unit,
 ) {
     var focusedIndex by remember { mutableStateOf(-1) }
@@ -842,21 +868,21 @@ private fun AppsGrid(
         state = state,
         columns = GridCells.Fixed(cardSize.columns),
         // Top padding so the top row can scale up on focus without its border being clipped.
-        contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = RailStart, top = 12.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // Nothing above the top row (the rail is to the left): Up there is kept, so the focus
-        // doesn't drift onto the rail; deeper rows keep their natural up navigation.
+        // Up off the top row or Left off the first column: the menu pill, above the grid's
+        // corner, which spatial search would miss. Elsewhere the keys move within the grid.
         modifier = Modifier
+            .focusRequester(focusRequester)
             .rememberFocus(memory)
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
-                    focusedIndex in 0 until cardSize.columns
-                ) {
-                    true
-                } else {
-                    false
-                }
+                val edge = event.type == KeyEventType.KeyDown && focusedIndex >= 0 && (
+                    (event.key == Key.DirectionUp && focusedIndex < cardSize.columns) ||
+                        (event.key == Key.DirectionLeft && focusedIndex % cardSize.columns == 0)
+                    )
+                if (edge) onEdge()
+                edge
             },
     ) {
         itemsIndexed(shortcuts, key = { _, shortcut -> shortcut.id }) { index, shortcut ->
@@ -875,24 +901,26 @@ private fun AppsGrid(
 private fun SourcesGrid(
     sources: List<TvSource>,
     cardSize: CardSize,
+    focusRequester: FocusRequester,
+    onEdge: () -> Unit,
     onOpen: (TvSource) -> Unit,
 ) {
     var focusedIndex by remember { mutableStateOf(-1) }
     LazyVerticalGrid(
         columns = GridCells.Fixed(cardSize.columns),
-        contentPadding = PaddingValues(start = 48.dp, top = 12.dp, end = 48.dp, bottom = 32.dp),
+        contentPadding = PaddingValues(start = RailStart, top = 12.dp, end = 48.dp, bottom = 32.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier
+            .focusRequester(focusRequester)
             .focusGroup()
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp &&
-                    focusedIndex in 0 until cardSize.columns
-                ) {
-                    true
-                } else {
-                    false
-                }
+                val edge = event.type == KeyEventType.KeyDown && focusedIndex >= 0 && (
+                    (event.key == Key.DirectionUp && focusedIndex < cardSize.columns) ||
+                        (event.key == Key.DirectionLeft && focusedIndex % cardSize.columns == 0)
+                    )
+                if (edge) onEdge()
+                edge
             },
     ) {
         itemsIndexed(sources, key = { _, source -> source.id }) { index, source ->
