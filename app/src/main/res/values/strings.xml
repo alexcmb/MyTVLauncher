@@ -126,6 +126,11 @@
     <string name="background_style">Style</string>
     <string name="background_wallpaper">Image</string>
     <string name="background_image_set">Set</string>
+    <string name="background_video">Video</string>
+    <string name="background_video_pick">Choose a video…</string>
+    <string name="background_video_remove">Remove video</string>
+    <string name="background_video_error">The TV can\'t play this video (try an H.264 or HEVC MP4)</string>
+    <string name="video_fit">Video framing</string>
     <string name="background_image_none">None</string>
     <string name="action_hidden_apps_label">Hidden apps</string>
     <string name="widget_menu_size">Size</string>
