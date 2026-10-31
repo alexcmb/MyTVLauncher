@@ -129,6 +129,21 @@ class WallpaperStore(private val context: Context, private val settings: Setting
         }
     }
 
+    /**
+     * A still wallpaper's picture, to draw full screen: no wider than 2560 pixels (a 4K or
+     * larger photo is decoded at a half, a quarter…). Null if it can't be read. Blocking.
+     */
+    fun still(wallpaper: Wallpaper): Bitmap? = runCatching {
+        val uri = Uri.parse(wallpaper.uri ?: return null)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth > 0 && bounds.outWidth / sample > 2560) sample *= 2
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+        }
+    }.getOrNull()
+
     private fun decodeSampled(uri: Uri): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }

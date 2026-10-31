@@ -13,6 +13,8 @@
     <string name="ambient_mode">Mode veille</string>
     <string name="ambient_off">Désactivé</string>
     <string name="ambient_minutes">%d min</string>
+    <string name="screensaver_system">Économiseur d\'écran du téléviseur</string>
+    <string name="screensaver_where">Dans Paramètres › Préférences de l\'appareil › Économiseur d\'écran, choisissez My TV Launcher</string>
     <string name="action_clock">Horloge</string>
     <string name="action_background">Fond</string>
     <string name="action_card_size">Taille des cartes</string>

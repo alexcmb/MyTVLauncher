@@ -39,8 +39,9 @@ reordered, hidden or deleted, and you choose which tab opens at start.
 
 **The rest.** A glass look throughout, the Outfit typeface, an accent colour (presets, or
 **Auto**, taken from the focused app's banner), a clock with optional seconds, date and
-greeting, and a sleep mode that leaves the background, the time and what's playing (with its
-cover) on screen. English and French.
+greeting, and a sleep mode, also offered as the TV's screensaver: the background darkened,
+with the time and what's playing (with its cover) drifting across the screen and bouncing off
+its edges. English and French.
 
 **Updates itself** from GitHub Releases, but only when you ask (Settings → Check for updates),
 and only installs an APK signed with the same key. That is the only time it touches the

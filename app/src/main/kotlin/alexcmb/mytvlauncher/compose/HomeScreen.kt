@@ -17,7 +17,6 @@ import android.net.Uri
 import android.os.SystemClock
 import android.view.View
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.AnimatedVisibility
@@ -123,17 +122,6 @@ import androidx.tv.material3.Glow
 import androidx.tv.material3.Icon
 import androidx.tv.material3.Text
 
-private val Background = Color(0xFF0E0E12)
-
-private fun lerpF(a: Float, b: Float, t: Float): Float = a + (b - a) * t
-
-/** Mixes [tint] into [base] by [fraction]; result is always fully opaque. */
-private fun blendColor(base: Color, tint: Color, fraction: Float): Color = Color(
-    red = base.red + (tint.red - base.red) * fraction,
-    green = base.green + (tint.green - base.green) * fraction,
-    blue = base.blue + (tint.blue - base.blue) * fraction,
-    alpha = 1f,
-)
 private val Muted = Color(0xFF9AA0B4)
 // The hub's own cards (sources, now playing) are glass; app cards keep their banner and get
 // the glass's light on top. One corner radius for all of them.
@@ -162,17 +150,6 @@ data class WidgetTile(
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
 data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
-
-/**
- * An imported dynamic wallpaper, as the home screen draws it: its schedule, where each
- * picture is, the city a sun schedule follows, and its library id (a new one per import).
- */
-data class DynamicWallpaper(
-    val schedule: alexcmb.mytvlauncher.dynamic.DynamicSchedule,
-    val frame: (Int) -> java.io.File,
-    val city: alexcmb.mytvlauncher.dynamic.City,
-    val id: String,
-)
 
 /** The derived clock values shown on the left of the title bar. */
 private data class ClockValues(val time: String, val date: String?, val greeting: String?)
@@ -292,66 +269,19 @@ fun HomeScreen(
 
     CompositionLocalProvider(LocalAccent provides accent, LocalFocusTracker provides focusTracker) {
     LauncherTheme {
-        // One intensity slider drives every mode: it deepens the SOLID tint, strengthens the
-        // gradient wash, and brightens the wallpaper (less dim). A dark base always carries the
-        // accent hue so even "solid" reads as coloured, not flat black.
+        // One intensity slider drives every background style (see Backdrop).
         val intensity = (backgroundIntensity / 100f).coerceIn(0f, 1f)
-        val accentColor = LocalAccent.current
-        val base = if (background == BackgroundStyle.SOLID) {
-            blendColor(Background, accentColor, lerpF(0.04f, 0.24f, intensity))
-        } else {
-            Background
-        }
-        Box(Modifier.fillMaxSize().background(base)) {
-            // Background decoration, behind the content.
-            when (background) {
-                BackgroundStyle.AMBIENT -> AmbientBackdrop(focused, intensity)
-                BackgroundStyle.ACCENT_GRADIENT -> Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            listOf(accentColor.copy(alpha = lerpF(0.18f, 0.65f, intensity)), Background)
-                        )
-                    )
-                )
-                BackgroundStyle.WALLPAPER -> if (backgroundImage != null) {
-                    val scale = when (wallpaperFit) {
-                        WallpaperFit.FILL -> ContentScale.Crop
-                        WallpaperFit.STRETCH -> ContentScale.FillBounds
-                        WallpaperFit.FIT -> ContentScale.Fit
-                        WallpaperFit.CENTER -> ContentScale.None
-                        WallpaperFit.SPAN -> ContentScale.FillWidth
-                    }
-                    Image(
-                        bitmap = backgroundImage,
-                        contentDescription = null,
-                        contentScale = scale,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    MediaScrim(intensity, onHub = selectedTab == 0)
-                }
-                BackgroundStyle.AURORA -> AuroraBackdrop(accentColor, intensity)
-                BackgroundStyle.VIDEO -> if (backgroundVideo != null) {
-                    VideoBackdrop(backgroundVideo, wallpaperFit)
-                    MediaScrim(intensity, onHub = selectedTab == 0)
-                }
-                BackgroundStyle.DYNAMIC -> if (dynamicWallpaper != null) {
-                    DynamicBackdrop(
-                        dynamicWallpaper.schedule,
-                        dynamicWallpaper.frame,
-                        dynamicWallpaper.city,
-                        when (wallpaperFit) {
-                            WallpaperFit.FILL -> ContentScale.Crop
-                            WallpaperFit.STRETCH -> ContentScale.FillBounds
-                            WallpaperFit.FIT -> ContentScale.Fit
-                            WallpaperFit.CENTER -> ContentScale.None
-                            WallpaperFit.SPAN -> ContentScale.FillWidth
-                        },
-                        dynamicWallpaper.id,
-                    )
-                    MediaScrim(intensity, onHub = selectedTab == 0)
-                }
-                BackgroundStyle.SOLID -> Unit // the tinted base is the whole look
-            }
+        Box(Modifier.fillMaxSize()) {
+            Backdrop(
+                style = background,
+                image = backgroundImage,
+                video = backgroundVideo,
+                dynamic = dynamicWallpaper,
+                intensity = intensity,
+                fit = wallpaperFit,
+                focused = focused,
+                dimmed = selectedTab != 0,
+            )
             HubShade(visible = selectedTab == 0 && !contentHidden, widgetsShown = widgetsShown, intensity = intensity)
             // Sleep mode fades the controls away and leaves the background on its own.
             val contentAlpha by animateFloatAsState(
@@ -446,21 +376,6 @@ fun HomeScreen(
         }
     }
     }
-}
-
-/**
- * The background's dimming behind an image, a video or a dynamic wallpaper. On the grid tabs
- * the whole picture is dimmed (their cards are all over it), the more so the lower the
- * brightness setting; the hub leaves it clear and only shades its bottom (see [HubShade]).
- */
-@Composable
-private fun MediaScrim(intensity: Float, onHub: Boolean) {
-    val alpha by animateFloatAsState(
-        targetValue = if (onHub) 0f else lerpF(0.8f, 0.2f, intensity),
-        animationSpec = tween(300),
-        label = "scrim",
-    )
-    Box(Modifier.fillMaxSize().background(Background.copy(alpha = alpha)))
 }
 
 /**
@@ -1120,55 +1035,6 @@ private fun NowPlayingCard(
                             .fillMaxWidth(fraction.coerceIn(0f, 1f))
                             .height(3.dp)
                             .background(tint, CircleShape),
-                    )
-                }
-            }
-        }
-    }
-}
-
-/**
- * The focused app's banner as hero art in the top-right corner, fading into the background
- * towards the left (so the hero title over there stays clean) and towards the bottom (no hard
- * edge). Drawn smaller than full-screen so a low-resolution banner doesn't blow up into a blur.
- * [intensity] (the background-brightness setting) sets how strongly it shows. No blur:
- * RenderEffect is API 31+.
- */
-@Composable
-private fun AmbientBackdrop(focused: Shortcut?, intensity: Float) {
-    Crossfade(targetState = focused?.banner, label = "backdrop") { banner ->
-        if (banner != null) {
-            val bitmap = remember(banner) { banner.toBitmap().asImageBitmap() }
-            Box(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .fillMaxWidth(0.62f)
-                        .fillMaxHeight(0.62f),
-                ) {
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alpha = lerpF(0.25f, 0.8f, intensity),
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    // Fade the art out into the plain background on its left and bottom edges.
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.horizontalGradient(
-                                0f to Background,
-                                0.45f to Background.copy(alpha = 0f),
-                            )
-                        )
-                    )
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                0.35f to Background.copy(alpha = 0f),
-                                1f to Background,
-                            )
-                        )
                     )
                 }
             }
