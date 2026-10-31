@@ -77,6 +77,13 @@ dependencies {
     implementation("androidx.palette:palette-ktx:1.0.0")
     // Video backgrounds: hardware decoding and gapless looping (the player only, no UI module).
     implementation("androidx.media3:media3-exoplayer:1.11.1")
+    constraints {
+        // Media3 1.11.1 pulls Guava 33.3.1, hit by GHSA-xxph-c9ww-hj94 (fixed in 33.7.2).
+        // Drop this once a stable Media3 asks for a fixed Guava itself.
+        implementation("com.google.guava:guava:33.7.2-android") {
+            because("GHSA-xxph-c9ww-hj94")
+        }
+    }
 
     // Compose for TV — the whole UI.
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
