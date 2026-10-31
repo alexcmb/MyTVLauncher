@@ -2,7 +2,6 @@ package alexcmb.mytvlauncher
 
 import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
-import alexcmb.mytvlauncher.compose.AmbientScreen
 import alexcmb.mytvlauncher.compose.DynamicWallpaper
 import alexcmb.mytvlauncher.compose.WallpaperGallery
 import alexcmb.mytvlauncher.compose.generatedKey
@@ -22,6 +21,7 @@ import alexcmb.mytvlauncher.compose.TvResizeOverlay
 import alexcmb.mytvlauncher.compose.TvTextPrompt
 import alexcmb.mytvlauncher.compose.WidgetTile
 import alexcmb.mytvlauncher.compose.ClockOptions
+import alexcmb.mytvlauncher.compose.Screensaver
 import alexcmb.mytvlauncher.compose.FocusTracker
 import alexcmb.mytvlauncher.compose.LocalAccent
 import alexcmb.mytvlauncher.compose.LocalFocusTracker
@@ -55,7 +55,6 @@ import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -402,7 +401,7 @@ class LauncherActivity : ComponentActivity() {
                         enter = fadeIn(tween(800)),
                         exit = fadeOut(tween(250)),
                     ) {
-                        AmbientScreen(nowPlaying)
+                        Screensaver(nowPlaying)
                     }
                 }
             }
@@ -1043,8 +1042,25 @@ class LauncherActivity : ComponentActivity() {
                     settings.setAmbientMinutes(minutes)
                     ambientMinutes = minutes
                 }
+            } + MenuItem(getString(R.string.screensaver_system), divider = true) {
+                closeMenus()
+                openScreensaverSettings()
             },
         )
+    }
+
+    /**
+     * Where the TV's screensaver is chosen, to pick this launcher's. Not every TV opens that
+     * screen from an app (Sony's doesn't): then its settings open, with the way there.
+     */
+    private fun openScreensaverSettings() {
+        val dreams = Intent(Settings.ACTION_DREAM_SETTINGS)
+        if (dreams.resolveActivity(packageManager) != null) {
+            startAppIntent(dreams)
+        } else {
+            startAppIntent(Intent(Settings.ACTION_SETTINGS))
+            Toast.makeText(this, R.string.screensaver_where, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showDisplayMenu() = openMenu {
@@ -1264,24 +1280,13 @@ class LauncherActivity : ComponentActivity() {
 
     /** Decodes the library's active still image off the main thread and publishes it to the UI. */
     private fun loadBackgroundImage() {
-        val uri = active?.takeIf { it.kind == WallpaperKind.STILL }?.uri?.let(Uri::parse)
-        if (uri == null) {
+        val still = active?.takeIf { it.kind == WallpaperKind.STILL }
+        if (still == null) {
             backgroundImage = null
             return
         }
         lifecycleScope.launch {
-            backgroundImage = withContext(Dispatchers.IO) {
-                runCatching {
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                    var sample = 1
-                    while (bounds.outWidth > 0 && bounds.outWidth / sample > 2560) sample *= 2
-                    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-                    contentResolver.openInputStream(uri)
-                        ?.use { BitmapFactory.decodeStream(it, null, opts) }
-                        ?.asImageBitmap()
-                }.getOrNull()
-            }
+            backgroundImage = withContext(Dispatchers.IO) { wallpaperStore.still(still)?.asImageBitmap() }
         }
     }
 

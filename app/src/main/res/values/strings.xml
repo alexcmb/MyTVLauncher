@@ -14,6 +14,8 @@
     <string name="ambient_mode">Sleep mode</string>
     <string name="ambient_off">Off</string>
     <string name="ambient_minutes">%d min</string>
+    <string name="screensaver_system">TV screensaver</string>
+    <string name="screensaver_where">In Settings › Device Preferences › Screen saver, pick My TV Launcher</string>
     <string name="action_clock">Clock</string>
     <string name="action_background">Background</string>
     <string name="action_card_size">Card size</string>
