@@ -296,6 +296,8 @@ class LauncherActivity : ComponentActivity() {
                         homeRequests = homeRequests,
                         pinnedApps = pinnedApps,
                         showWidgets = showWidgets,
+                        // The settings opened from the menu sit in its place, over the pill.
+                        menuCovered = menuDocked && menuStack.isNotEmpty() && !galleryOpen,
                         // Sleep mode and the gallery leave the background on its own: in the
                         // gallery, that's the live preview of the card just applied.
                         contentHidden = ambient || galleryOpen,
