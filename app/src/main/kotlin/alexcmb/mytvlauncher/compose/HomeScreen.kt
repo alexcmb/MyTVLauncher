@@ -208,6 +208,7 @@ fun HomeScreen(
     pinnedApps: List<String>,
     showWidgets: Boolean,
     contentHidden: Boolean = false,
+    menuCovered: Boolean = false,
 ) {
     // The selection is held by key, not position, so a tab moved, hidden or added in front
     // doesn't silently switch to another one. A key that's gone (hidden) falls back to the hub.
@@ -438,6 +439,7 @@ fun HomeScreen(
                     },
                     onSettings = onSettings,
                     onExit = { focusContent() },
+                    covered = menuCovered,
                     modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
             }
