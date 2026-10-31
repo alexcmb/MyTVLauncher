@@ -37,17 +37,28 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     /**
      * Full (re)load: queries the PackageManager off the main thread, splits out the
      * hidden apps, then publishes the grouped/sorted visible ones. Any in-flight load
-     * is cancelled first.
+     * is cancelled first. The very first one shows the list saved last time while it runs.
      */
     fun loadShortcutGroupList() {
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val all = shortcutRepository.load()
-            val hiddenIds = withContext(Dispatchers.IO) { shortcutRepository.hiddenIds() }
-            val (hidden, visible) = all.partition { it.id in hiddenIds }
-            hiddenApps = hidden.sortedBy { it.title }
-            browseContent.value = groupAndSort(visible)
+            if (browseContent.value == null) shortcutRepository.cached()?.let { publish(it) }
+            publish(shortcutRepository.load())
         }
+    }
+
+    // What was last published, so a load that finds the same apps doesn't publish them again.
+    private var published: List<Any?>? = null
+
+    private suspend fun publish(all: Set<Shortcut>) {
+        val hiddenIds = withContext(Dispatchers.IO) { shortcutRepository.hiddenIds() }
+        // The pictures by identity: the repository hands back the same ones while an app is unchanged.
+        val content = listOf(hiddenIds) + all.map { listOf(it.id, it.title, it.icon, it.banner, it.category, it.openCount) }
+        if (content == published) return
+        published = content
+        val (hidden, visible) = all.partition { it.id in hiddenIds }
+        hiddenApps = hidden.sortedBy { it.title }
+        browseContent.value = groupAndSort(visible)
     }
 
     fun hideApp(shortcut: Shortcut) {
