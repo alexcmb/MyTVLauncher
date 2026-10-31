@@ -1,0 +1,5 @@
+# The launcher's own code, compiled ahead of time when the APK is installed, so the first start
+# after an install or an update doesn't run it interpreted. Compose and the other libraries
+# bring their own profiles.
+HSPLalexcmb/mytvlauncher/**;->**(**)**
+Lalexcmb/mytvlauncher/**;

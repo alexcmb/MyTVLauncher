@@ -53,8 +53,11 @@ import alexcmb.mytvlauncher.widget.tileWidthDp
 import android.app.AlertDialog
 import android.appwidget.AppWidgetManager
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -86,6 +89,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -108,6 +112,11 @@ class LauncherActivity : ComponentActivity() {
     private val sourceController by lazy { TvSourceController(this) }
     private val nowPlayingController by lazy { NowPlayingController(this) }
     private val settings by lazy { SettingsRepository.getInstance(applicationContext) }
+
+    // An app installed, updated or removed while the launcher runs: the list is read again.
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = viewModel.loadShortcutGroupList()
+    }
 
     // Menus nest by pushing onto a stack, so Back steps out one level at a time rather than
     // closing the lot. The stack holds *builders*, not built specs: the visible level is rebuilt
@@ -232,6 +241,18 @@ class LauncherActivity : ComponentActivity() {
         appOrder = settings.appOrder()
         ambientMinutes = settings.ambientMinutes()
         watchForIdle()
+        ContextCompat.registerReceiver(
+            this,
+            packageReceiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_PACKAGE_ADDED)
+                addAction(Intent.ACTION_PACKAGE_CHANGED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
+                addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addDataScheme("package")
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         widgetSlot.onChanged = { refreshWidgets() }
         sourceController.onChanged = { sources = sourceController.sources() }
         sources = sourceController.sources()
@@ -512,6 +533,11 @@ class LauncherActivity : ComponentActivity() {
         widgetSlot.stopListening()
         sourceController.stopListening()
         nowPlayingController.stopListening()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(packageReceiver)
     }
 
     @Deprecated("The widget bind and configure flows are driven by the legacy result API")

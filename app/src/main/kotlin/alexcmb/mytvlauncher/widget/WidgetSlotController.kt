@@ -9,6 +9,7 @@ import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +18,7 @@ import android.util.SizeF
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
+import java.util.concurrent.Executors
 
 /**
  * Hosts the launcher's app widgets. Compose owns their placement; this owns the
@@ -30,7 +32,16 @@ import androidx.annotation.StringRes
  */
 class WidgetSlotController(private val activity: Activity) {
     private val appWidgetManager = AppWidgetManager.getInstance(activity)
-    private val host = AppWidgetHost(activity, HOST_ID)
+    // A widget's views are built from its app's own files, slow to read on a busy TV (just
+    // after it boots). On Android 8+ they're built on this thread instead of in the frame that
+    // shows the home screen; the widget fills in when they're ready.
+    private val inflater = Executors.newSingleThreadExecutor()
+    private val host = object : AppWidgetHost(activity, HOST_ID) {
+        override fun onCreateView(context: Context, appWidgetId: Int, appWidget: AppWidgetProviderInfo?) =
+            super.onCreateView(context, appWidgetId, appWidget).apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setExecutor(inflater)
+            }
+    }
     private val repository = WidgetRepository.getInstance(activity)
 
     /** Notified whenever the hosted set changes, so the Compose UI can re-read it. */
