@@ -80,7 +80,7 @@ dependencies {
     constraints {
         // Media3 1.11.1 pulls Guava 33.3.1, hit by GHSA-xxph-c9ww-hj94 (fixed in 33.7.2).
         // Drop this once a stable Media3 asks for a fixed Guava itself.
-        implementation("com.google.guava:guava:33.7.2-android") {
+        implementation("com.google.guava:guava:33.8.0-android") {
             because("GHSA-xxph-c9ww-hj94")
         }
     }
