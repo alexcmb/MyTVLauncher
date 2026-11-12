@@ -74,7 +74,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // Extracts the accent colour from a focused app's banner (the "auto" accent).
-    implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation("androidx.palette:palette-ktx:1.1.0")
     // Video backgrounds: hardware decoding and gapless looping (the player only, no UI module).
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     constraints {
