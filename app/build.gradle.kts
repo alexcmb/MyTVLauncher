@@ -18,7 +18,7 @@ android {
     compileSdk = 37
     defaultConfig {
         applicationId = "alexcmb.mytvlauncher"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         // Overridable from CI so each tag produces an increasing version
         // (e.g. -PappVersionName=2026.7.14 -PappVersionCode=20260714).

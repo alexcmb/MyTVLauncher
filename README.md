@@ -56,7 +56,7 @@ and sideload it:
 adb install -r MyTvLauncher-v0.11.apk
 ```
 
-Android 6.0 (API 23) or newer; dynamic HEIC wallpapers need Android 9. Then press Home and
+Android 7.0 (API 24) or newer; dynamic HEIC wallpapers need Android 9. Then press Home and
 pick My TV Launcher.
 
 ## Widgets need a one-time permission
