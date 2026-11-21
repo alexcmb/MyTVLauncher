@@ -1,91 +1,126 @@
 <div align="center">
 
-<img src="docs/logo.svg" alt="" width="112">
+<img src="docs/logo.svg" alt="My TV Launcher Logo" width="128">
 
 # My TV Launcher
 
-**A simple, modern home screen for Android TV.**
+**A lightweight, elegant, and privacy-respecting home screen for Android TV.**
 
-No ads. No tracking. No account. Works offline.
+[![Latest Release](https://img.shields.io/github/v/release/alexcmb/MyTVLauncher?color=blue&style=flat-square)](https://github.com/alexcmb/MyTVLauncher/releases/latest)
+[![Android](https://img.shields.io/badge/Android-7.0%2B%20(API%2024%2B)-brightgreen?style=flat-square&logo=android)](https://developer.android.com/)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/alexcmb/MyTVLauncher/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/alexcmb/MyTVLauncher/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/alexcmb/MyTVLauncher/codeql.yml?branch=main&label=CodeQL&style=flat-square)](https://github.com/alexcmb/MyTVLauncher/actions/workflows/codeql.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-orange?style=flat-square)](LICENSE.md)
+[![Privacy First](https://img.shields.io/badge/Privacy-100%25%20Offline%20%7C%20Zero%20Tracking-purple?style=flat-square)](#privacy--security)
+
+<p align="center">
+  <b>No ads. No tracking. No telemetry. No account required. Fully functional offline.</b>
+</p>
+
+---
 
 </div>
 
-## What it does
+## ✨ Highlights
 
-**A home that leaves room for your background.** The top of the screen is left to it; everything
-sits in the bottom third: the media playing, the focused app's name and a dock of favourites
-over a soft gradient. Widgets wait out of sight: press Up from the dock and they come in at the top
-corners, press Down and they tuck away again.
+My TV Launcher gives your TV screen back to you. The interface sits discreetly in the bottom third of the screen, leaving the rest open for your wallpapers, ambient visuals, or media art.
 
-**A side rail.** Tabs and settings live in one rail down the left edge: a slim strip of glass
-at rest, a panel with names when you move onto it. OK switches tab; the settings open in that
-same panel. Each category of apps is a tab with a full grid, sorted by usage, by name or in
-your own order; the TV's inputs (HDMI, AV) get a tab of their own.
+* 🪟 **Glassmorphic Design**: Refined glass textures, fluid transitions, and the clean **Outfit** typography.
+* 🎨 **Adaptive Accent Colors**: Choose from vibrant presets or let **Auto** extract the dominant accent directly from the focused app's banner (via AndroidX Palette).
+* 🌌 **Rich Wallpaper Gallery**:
+  * **Looping Videos** (MP4 / WebM): Hardware-accelerated, silent, and gapless loops powered by AndroidX Media3 ExoPlayer.
+  * **Day / Night Dynamic Wallpapers** (Apple HEIC): Cross-fades throughout the day based on local clock or real astronomical sun position computed for your city.
+  * **Live Procedural Visuals**: Drifting aurora, subtle gradients, or focused app art.
+  * **Still Images**: Custom scaling (fill, fit, stretch, centre, span).
+* 📂 **Retractable Side Rail**:
+  * A sleek glass strip that expands into a navigation panel upon focus.
+  * Dedicated tabs for custom categories, sorted by usage frequency, alphabetical order, or custom manual ordering.
+  * Quick-access tab for physical TV inputs (HDMI, AV).
+* 🧩 **Tuckable Widgets**: Host up to three standard Android widgets with configurable sizes and positions. Press **Up** from the dock to reveal them; press **Down** to tuck them away.
+* 💤 **Ambient Screensaver (Daydream)**: Sleep mode integrates with Android's system screensaver, featuring a floating bounce-clock and live "Now Playing" cover art.
+* ⚡ **Fast & Responsive**: Instant home startup using intelligent app list caching and asynchronous widget initialization.
+* 🌐 **Bilingual**: Fully localized in English and French.
 
-**Backgrounds, in a gallery.** Keep as many as you like and pick them from cards, filtered by
-kind:
+---
 
-- **Looping videos** (MP4/WebM), silent, hardware-decoded.
-- **Day/night dynamic wallpapers** (HEIC). They follow the clock, or the real
-  position of the sun over your city, cross-fading from dawn to night.
-- **Still images**, with fill, fit, stretch, centre or span framing.
-- **Generated**: a drifting aurora, the focused app's banner, an accent gradient, plain.
+## 🔒 Privacy & Security
 
-**Apps, organised.** Long-press any app to pin it to the dock, move it to another category
-(or a new one), hide it, uninstall it or open its system info. Categories can be renamed,
-reordered, hidden or deleted, and you choose which tab opens at start.
+* **Zero Data Collection**: No analytics SDKs, no trackers, no third-party network requests.
+* **Offline by Design**: The only internet permission requested is strictly used to check for updates against GitHub Releases when you manually click **Check for updates**.
+* **Integrity Enforcement**: Update packages are verified against the author's signing key before installation.
 
-**Widgets.** Host up to three; each gets one of five sizes and a zone (left, centre, right).
+---
 
-**The rest.** A glass look throughout, the Outfit typeface, an accent colour (presets, or
-**Auto**, taken from the focused app's banner), a clock with optional seconds, date and
-greeting, and a sleep mode, also offered as the TV's screensaver: the background darkened,
-with the time and what's playing (with its cover) drifting across the screen and bouncing off
-its edges. English and French.
+## 📥 Installation
 
-**Updates itself** from GitHub Releases, but only when you ask (Settings → Check for updates),
-and only installs an APK signed with the same key. That is the only time it touches the
-network.
+1. Download the latest APK from the **[Releases](https://github.com/alexcmb/MyTVLauncher/releases/latest)** page.
+2. Sideload it onto your Android TV device via ADB:
 
-## Install
-
-Grab the APK from the [latest release](https://github.com/alexcmb/MyTVLauncher/releases/latest)
-and sideload it:
-
-```
-adb install -r MyTvLauncher-v0.11.apk
+```bash
+adb install -r MyTvLauncher-v0.14.apk
 ```
 
-Android 7.0 (API 24) or newer; dynamic HEIC wallpapers need Android 9. Then press Home and
-pick My TV Launcher.
+> **Requirements**:
+> * Android 7.0 (API 24) or newer.
+> * Dynamic HEIC day/night wallpapers require Android 9.0 (API 28) or newer.
 
-## Widgets need a one-time permission
+3. Press the **Home** button on your remote and select **My TV Launcher** as your default launcher.
 
-Android reserves `BIND_APPWIDGET` for privileged apps and expects a launcher to be
-white-listed through a Settings screen that the Android TV build doesn't ship. So on most TV
-devices the permission has to be granted once, over adb:
+---
 
-```
+## ⚙️ Widget Permission (One-Time ADB Setup)
+
+Standard Android TV distributions omit the system widget authorization UI. To allow My TV Launcher to host widgets on most Android TV devices, grant the `BIND_APPWIDGET` permission once via ADB:
+
+```bash
 adb shell appwidget grantbind --package alexcmb.mytvlauncher
 ```
 
-Then add the widget again. Devices that do ship the consent screen, or a system widget picker,
-are used automatically and need none of this.
+> [!NOTE]
+> Devices that provide their own widget consent screen or picker handle this automatically and do not require this command.
 
-## Build
+---
 
-```
+## 🛠️ Development & Building
+
+Built with **Jetpack Compose for TV**, **Kotlin 2.4**, and **Android Gradle Plugin 9**.
+
+### Prerequisites
+* JDK 17 or higher
+* Android SDK (API 35 & 37 build tools)
+
+### Build Commands
+
+```bash
+# Run unit tests
+./gradlew testDebugUnitTest
+
+# Build debug APK (installs as alexcmb.mytvlauncher.dev)
 ./gradlew assembleDebug
+
+# Build release APK (requires signing credentials)
+./gradlew assembleRelease
 ```
 
-JDK 17 or newer. The debug build installs as `alexcmb.mytvlauncher.dev`, next to the release
-one, so you can try changes without touching your launcher.
+> [!TIP]
+> The debug build uses the applicationId suffix `.dev` (`alexcmb.mytvlauncher.dev`), allowing you to test changes on your TV side-by-side without replacing your daily launcher.
 
-Every push and pull request runs the unit tests, Android Lint, Semgrep, gitleaks, an
-OSV-Scanner audit of the shipped dependencies and CodeQL. Pushing a `vMAJOR.MINOR[.PATCH]`
-tag builds the release APK, signs it with the key held in the repository's secrets, and
-publishes a GitHub Release whose text is the tag's message.
+---
 
-## License
+## 🛡️ CI / CD Pipeline
 
-[GPL-3.0](LICENSE.md)
+Every push and pull request runs an automated security and compliance suite:
+* **Unit Tests & Debug Build**
+* **Android Lint** (strict error checks)
+* **Semgrep** (static analysis rules)
+* **Gitleaks** (secret detection)
+* **OSV-Scanner** (dependency vulnerability audits)
+* **CodeQL** (GitHub semantic security analysis for Java/Kotlin)
+
+Releases are published automatically upon pushing an annotated semantic tag `vMAJOR.MINOR[.PATCH]`.
+
+---
+
+## 📜 License
+
+This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE.md](LICENSE.md) file for details.
