@@ -205,6 +205,8 @@ fun HomeScreen(
     // The hub's dock, where the focus starts, and the grid of the other tabs.
     val dockFocus = remember { FocusRequester() }
     val gridFocus = remember { FocusRequester() }
+    val nowPlayingFocus = remember { FocusRequester() }
+    val widgetsFocus = remember { FocusRequester() }
     var railFocused by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     // Something else took the focus while the menu was open (sleep mode, an overlay): close
@@ -296,7 +298,12 @@ fun HomeScreen(
                 animationSpec = tween(durationMillis = if (contentHidden) 800 else 250),
                 label = "content",
             )
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = contentAlpha }
+                    .focusProperties { canFocus = !contentHidden }
+            ) {
                 // The tab fills the screen: the hub uses all of it (its media card up top, its
                 // dock down below); the grids start under the header. Everything lines up on
                 // the menu pill's left edge.
@@ -338,6 +345,8 @@ fun HomeScreen(
                             dockFocus = dockFocus,
                             railFocus = tabsFocus,
                             widgetsShown = widgetsShown,
+                            nowPlayingFocus = nowPlayingFocus,
+                            widgetsFocus = widgetsFocus,
                         )
                         shown is SourcesTab -> Box(Modifier.padding(top = HeaderHeight)) {
                             SourcesGrid(shown.sources, cardSize, gridFocus, { runCatching { tabsFocus.requestFocus() } }, onOpenSource)
@@ -378,6 +387,21 @@ fun HomeScreen(
                     },
                     onSettings = onSettings,
                     onExit = { focusContent() },
+                    onRight = {
+                        when {
+                            selectedTab == 0 && nowPlaying != null -> runCatching { nowPlayingFocus.requestFocus() }
+                            selectedTab == 0 && widgetsShown -> runCatching { widgetsFocus.requestFocus() }
+                            selectedTab == 0 -> runCatching { dockFocus.requestFocus() }
+                            else -> runCatching { gridFocus.requestFocus() }
+                        }
+                    },
+                    onDown = {
+                        when {
+                            selectedTab == 0 && widgetsShown -> runCatching { widgetsFocus.requestFocus() }
+                            selectedTab == 0 -> runCatching { dockFocus.requestFocus() }
+                            else -> runCatching { gridFocus.requestFocus() }
+                        }
+                    },
                     covered = menuCovered,
                     modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
@@ -488,19 +512,18 @@ private fun Hub(
     dockFocus: FocusRequester,
     railFocus: FocusRequester,
     widgetsShown: Boolean,
+    nowPlayingFocus: FocusRequester,
+    widgetsFocus: FocusRequester,
 ) {
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
     var nowPlayingFocused by remember { mutableStateOf(false) }
     var dockFocused by remember { mutableStateOf(false) }
-    val nowPlayingFocus = remember { FocusRequester() }
     val spotlight by animateFloatAsState(
         targetValue = if (focusedWidget != null) 1f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    // The widget band, so Up from the dock lands in it whatever card it's on.
-    val widgetsFocus = remember { FocusRequester() }
 
     Box(
         Modifier
