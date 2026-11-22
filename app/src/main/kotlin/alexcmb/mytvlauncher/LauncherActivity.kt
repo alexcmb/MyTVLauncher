@@ -4,7 +4,10 @@ import alexcmb.mytvlauncher.browse.BrowseViewModel
 import alexcmb.mytvlauncher.browse.CategoryOptions
 import alexcmb.mytvlauncher.compose.DynamicWallpaper
 import alexcmb.mytvlauncher.compose.WallpaperGallery
+import alexcmb.mytvlauncher.compose.WidgetGallery
 import alexcmb.mytvlauncher.compose.generatedKey
+import alexcmb.mytvlauncher.widget.builtin.BuiltinWidgetHost
+import alexcmb.mytvlauncher.widget.builtin.BuiltinWidgetType
 import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.dynamic.DynamicSchedule
 import alexcmb.mytvlauncher.wallpaper.Wallpaper
@@ -189,6 +192,9 @@ class LauncherActivity : ComponentActivity() {
     private var galleryOpen by mutableStateOf(false)
     private var galleryMenuDepth = 0
     private var galleryReturn: FocusRequester? = null
+    private var widgetGalleryOpen by mutableStateOf(false)
+    private var widgetGalleryMenuDepth = 0
+    private var widgetGalleryReturn: FocusRequester? = null
     private var importing by mutableStateOf(false)
     private var wallpaperFit by mutableStateOf(WallpaperFit.FILL)
     // Live value of the background-brightness slider while it's open, else null.
@@ -268,6 +274,7 @@ class LauncherActivity : ComponentActivity() {
             // The document picker can recreate us too: come back to the gallery it was opened
             // from (the menus under it are gone, so Back goes straight to the home screen).
             galleryOpen = savedInstanceState.getBoolean(STATE_GALLERY, false)
+            widgetGalleryOpen = savedInstanceState.getBoolean(STATE_WIDGET_GALLERY, false)
         }
         // A launcher is the home screen: Back must not leave it. The menus register their
         // own back handlers that take priority while open, so this only fires at the root.
@@ -317,10 +324,10 @@ class LauncherActivity : ComponentActivity() {
                         pinnedApps = pinnedApps,
                         showWidgets = showWidgets,
                         // The settings opened from the menu sit in its place, over the pill.
-                        menuCovered = menuDocked && menuStack.isNotEmpty() && !galleryOpen,
+                        menuCovered = menuDocked && menuStack.isNotEmpty() && !galleryOpen && !widgetGalleryOpen,
                         // Sleep mode and the gallery leave the background on its own: in the
                         // gallery, that's the live preview of the card just applied.
-                        contentHidden = ambient || galleryOpen,
+                        contentHidden = ambient || galleryOpen || widgetGalleryOpen,
                     )
                     // Back pops one level; when the stack empties the menu is gone. A live slider
                     // (widget size, background brightness) hides the menus so the result shows,
@@ -342,13 +349,35 @@ class LauncherActivity : ComponentActivity() {
                             )
                         }
                     }
-                    val menuShown = !galleryOpen || menuStack.size > galleryMenuDepth
+                    if (widgetGalleryOpen) {
+                        CompositionLocalProvider(LocalFocusTracker provides focusTracker) {
+                            WidgetGallery(
+                                hostedWidgets = widgetSlot.hostedForDisplay(),
+                                availableProviders = widgetSlot.availableProviders(),
+                                canAddMore = widgetSlot.canAddMore(),
+                                showWidgets = showWidgets,
+                                onToggleShowWidgets = {
+                                    settings.setShowWidgets(it)
+                                    showWidgets = it
+                                },
+                                onAddBuiltin = { type -> widgetSlot.addBuiltin(type) },
+                                onAddProvider = { provider -> widgetSlot.add(provider) },
+                                onOptions = { id -> showWidgetMenu(id) },
+                                onRemove = { id -> widgetSlot.remove(id) },
+                                onDismiss = ::closeWidgetGallery,
+                            )
+                        }
+                    }
+                    val menuShown = (!galleryOpen && !widgetGalleryOpen) ||
+                        (galleryOpen && menuStack.size > galleryMenuDepth) ||
+                        (widgetGalleryOpen && menuStack.size > widgetGalleryMenuDepth)
                     if (resizing == null && backgroundAdjust == null && namePrompt == null && menuShown) {
                         menuStack.lastOrNull()?.let { build ->
                             // Over the gallery (a card's options), a dialog as usual.
-                            TvMenu(build(), menuFocus, docked = menuDocked && !galleryOpen) {
+                            TvMenu(build(), menuFocus, docked = menuDocked && !galleryOpen && !widgetGalleryOpen) {
                                 // Stepping out of the gallery's own menus lands back on its card.
                                 if (galleryOpen && menuStack.size - 1 == galleryMenuDepth) returnFocus()
+                                if (widgetGalleryOpen && menuStack.size - 1 == widgetGalleryMenuDepth) returnFocus()
                                 if (menuStack.size == 1) closeMenus()
                                 else menuStack.removeAt(menuStack.lastIndex)
                             }
@@ -458,6 +487,7 @@ class LauncherActivity : ComponentActivity() {
             backgroundAdjust = null
             namePrompt = null
             galleryOpen = false
+            widgetGalleryOpen = false
             ambient = false
             homeRequests++
         }
@@ -500,7 +530,7 @@ class LauncherActivity : ComponentActivity() {
                 while (true) {
                     delay(IDLE_CHECK_MS)
                     val busy = menuStack.isNotEmpty() || resizing != null ||
-                        backgroundAdjust != null || namePrompt != null || galleryOpen || !hasWindowFocus()
+                        backgroundAdjust != null || namePrompt != null || galleryOpen || widgetGalleryOpen || !hasWindowFocus()
                     val idleMs = SystemClock.uptimeMillis() - lastInputAt
                     if (ambientMinutes > 0 && !ambient && !busy && idleMs >= ambientMinutes * 60_000L) {
                         ambient = true
@@ -525,6 +555,7 @@ class LauncherActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         outState.putInt(STATE_PENDING_WIDGET, widgetSlot.pendingWidgetId)
         outState.putBoolean(STATE_GALLERY, galleryOpen)
+        outState.putBoolean(STATE_WIDGET_GALLERY, widgetGalleryOpen)
     }
 
     override fun onStop() {
@@ -588,22 +619,37 @@ class LauncherActivity : ComponentActivity() {
                 ?.let { stored.copy(scalePercent = it.percent) } ?: stored
             val layoutW = h.layoutWidthDp()
             val layoutH = h.layoutHeightDp()
-            WidgetTile(
-                id = h.id,
-                widthDp = h.tileWidthDp(),
-                heightDp = h.tileHeightDp(),
-                layoutWidthDp = layoutW,
-                layoutHeightDp = layoutH,
-                alignment = h.alignment,
-                createView = {
-                    val view = hostViews[h.id]
-                        ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
-                    // It may still be attached to the AndroidView from the previous visit.
-                    (view.parent as? ViewGroup)?.removeView(view)
-                    view
-                },
-                applySize = { view -> widgetSlot.tellSize(view, layoutW, layoutH) },
-            )
+            val builtin = BuiltinWidgetType.fromId(h.id)
+            if (builtin != null) {
+                WidgetTile(
+                    id = h.id,
+                    widthDp = h.tileWidthDp(),
+                    heightDp = h.tileHeightDp(),
+                    layoutWidthDp = layoutW,
+                    layoutHeightDp = layoutH,
+                    alignment = h.alignment,
+                    builtinContent = {
+                        BuiltinWidgetHost(type = builtin, shape = h.shape)
+                    },
+                )
+            } else {
+                WidgetTile(
+                    id = h.id,
+                    widthDp = h.tileWidthDp(),
+                    heightDp = h.tileHeightDp(),
+                    layoutWidthDp = layoutW,
+                    layoutHeightDp = layoutH,
+                    alignment = h.alignment,
+                    createView = {
+                        val view = hostViews[h.id]
+                            ?: widgetSlot.createHostView(h).also { hostViews[h.id] = it }
+                        // It may still be attached to the AndroidView from the previous visit.
+                        (view.parent as? ViewGroup)?.removeView(view)
+                        view
+                    },
+                    applySize = { view -> widgetSlot.tellSize(view, layoutW, layoutH) },
+                )
+            }
         }
     }
 
@@ -736,7 +782,7 @@ class LauncherActivity : ComponentActivity() {
         val items = mutableListOf(
             MenuItem(getString(R.string.action_appearance), submenu = true) { showAppearanceMenu() },
             MenuItem(getString(R.string.action_tabs), submenu = true) { showTabsMenu() },
-            MenuItem(getString(R.string.action_widgets), submenu = true) { showWidgetsMenu() },
+            MenuItem(getString(R.string.action_widgets), submenu = true) { openWidgetGallery() },
         )
         val hidden = viewModel.hiddenApps
         if (hidden.isNotEmpty()) {
@@ -971,33 +1017,34 @@ class LauncherActivity : ComponentActivity() {
         val label = widgetSlot.hostedWidgets().firstOrNull { it.first == id }?.second?.toString()
             ?: getString(R.string.action_widgets)
         val widget = hostedWidget(id)
-        MenuSpec(
-            title = label,
-            items = listOf(
-                MenuItem(getString(R.string.widget_menu_size), value = "${widgetSlot.scaleOf(id)} %") {
-                    startResize(id)
-                },
-                MenuItem(
-                    getString(R.string.widget_menu_align),
-                    value = widget?.let { alignmentName(it.alignment) },
-                    submenu = true,
-                ) { showAlignmentMenu(id) },
-                MenuItem(
-                    getString(R.string.widget_menu_shape),
-                    value = widget?.let { shapeName(it.shape) },
-                    submenu = true,
-                ) { showShapeMenu(id) },
-                MenuItem(
-                    getString(R.string.widget_render),
-                    value = widget?.let { widgetFitName(it.fit) },
-                    submenu = true,
-                ) { showFitMenu(id) },
-                MenuItem(getString(R.string.widget_menu_remove), divider = true) {
-                    closeMenus()
-                    widgetSlot.remove(id)
-                },
-            ),
+        val isBuiltin = BuiltinWidgetType.isBuiltin(id)
+        val items = mutableListOf(
+            MenuItem(getString(R.string.widget_menu_size), value = "${widgetSlot.scaleOf(id)} %") {
+                startResize(id)
+            },
+            MenuItem(
+                getString(R.string.widget_menu_align),
+                value = widget?.let { alignmentName(it.alignment) },
+                submenu = true,
+            ) { showAlignmentMenu(id) },
+            MenuItem(
+                getString(R.string.widget_menu_shape),
+                value = widget?.let { shapeName(it.shape) },
+                submenu = true,
+            ) { showShapeMenu(id) },
         )
+        if (!isBuiltin) {
+            items += MenuItem(
+                getString(R.string.widget_render),
+                value = widget?.let { widgetFitName(it.fit) },
+                submenu = true,
+            ) { showFitMenu(id) }
+        }
+        items += MenuItem(getString(R.string.widget_menu_remove), divider = true) {
+            closeMenus()
+            widgetSlot.remove(id)
+        }
+        MenuSpec(title = label, items = items)
     }
 
     private fun alignmentName(alignment: WidgetAlignment): String = getString(
@@ -1201,6 +1248,17 @@ class LauncherActivity : ComponentActivity() {
     private fun closeGallery() {
         focusTracker.last = galleryReturn
         galleryOpen = false
+    }
+
+    private fun openWidgetGallery() {
+        widgetGalleryReturn = focusTracker.last
+        widgetGalleryMenuDepth = menuStack.size
+        widgetGalleryOpen = true
+    }
+
+    private fun closeWidgetGallery() {
+        focusTracker.last = widgetGalleryReturn
+        widgetGalleryOpen = false
     }
 
     private fun applyWallpaper(wallpaper: Wallpaper) {
@@ -1536,6 +1594,7 @@ class LauncherActivity : ComponentActivity() {
         const val TAG = "LauncherActivity"
         const val STATE_PENDING_WIDGET = "pending_widget"
         const val STATE_GALLERY = "gallery_open"
+        const val STATE_WIDGET_GALLERY = "widget_gallery_open"
         const val REQUEST_PICK_WALLPAPER = 2001
         const val IDLE_CHECK_MS = 5_000L
     }

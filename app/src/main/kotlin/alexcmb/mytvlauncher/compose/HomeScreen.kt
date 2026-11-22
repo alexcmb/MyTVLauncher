@@ -33,6 +33,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -144,8 +145,9 @@ data class WidgetTile(
     val layoutWidthDp: Int,
     val layoutHeightDp: Int,
     val alignment: WidgetAlignment,
-    val createView: () -> View,
-    val applySize: (View) -> Unit,
+    val createView: () -> View = { View(null) },
+    val applySize: (View) -> Unit = {},
+    val builtinContent: (@Composable BoxScope.() -> Unit)? = null,
 )
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
@@ -731,20 +733,31 @@ private fun WidgetZone(
                         .clipToBounds(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    // The host view is laid out at its layout size and scaled to the tile: in
-                    // NATIVE fit those are equal (scale 1, the widget owns the size and may
-                    // clip); in FIT the layout is the larger base size scaled down so it shows
-                    // whole.
-                    val sx = tile.widthDp.toFloat() / tile.layoutWidthDp
-                    val sy = tile.heightDp.toFloat() / tile.layoutHeightDp
-                    AndroidView(
-                        factory = { tile.createView() },
-                        update = { tile.applySize(it) },
-                        modifier = Modifier
-                            .focusRequester(viewFocus)
-                            .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
-                            .graphicsLayer { scaleX = sx; scaleY = sy },
-                    )
+                    if (tile.builtinContent != null) {
+                        Box(
+                            modifier = Modifier
+                                .focusRequester(viewFocus)
+                                .focusable()
+                                .fillMaxSize(),
+                        ) {
+                            tile.builtinContent.invoke(this)
+                        }
+                    } else {
+                        // The host view is laid out at its layout size and scaled to the tile: in
+                        // NATIVE fit those are equal (scale 1, the widget owns the size and may
+                        // clip); in FIT the layout is the larger base size scaled down so it shows
+                        // whole.
+                        val sx = tile.widthDp.toFloat() / tile.layoutWidthDp
+                        val sy = tile.heightDp.toFloat() / tile.layoutHeightDp
+                        AndroidView(
+                            factory = { tile.createView() },
+                            update = { tile.applySize(it) },
+                            modifier = Modifier
+                                .focusRequester(viewFocus)
+                                .requiredSize(tile.layoutWidthDp.dp, tile.layoutHeightDp.dp)
+                                .graphicsLayer { scaleX = sx; scaleY = sy },
+                        )
+                    }
                 }
             }
         }

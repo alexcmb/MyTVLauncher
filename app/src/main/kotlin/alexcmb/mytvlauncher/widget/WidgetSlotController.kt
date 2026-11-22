@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.widget
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.repository.WidgetRepository
+import alexcmb.mytvlauncher.widget.builtin.BuiltinWidgetType
 import android.app.Activity
 import android.app.AlertDialog
 import android.appwidget.AppWidgetHost
@@ -93,12 +94,17 @@ class WidgetSlotController(private val activity: Activity) {
 
     /** The hosted widgets and their labels, for the manage menus. */
     fun hostedWidgets(): List<Pair<Int, CharSequence>> = repository.query().mapNotNull { hosted ->
+        val builtin = BuiltinWidgetType.fromId(hosted.id)
+        if (builtin != null) {
+            return@mapNotNull hosted.id to activity.getString(builtin.titleRes)
+        }
         val info = appWidgetManager.getAppWidgetInfo(hosted.id) ?: return@mapNotNull null
         hosted.id to info.loadLabel(activity.packageManager)
     }
 
     /** The stored widgets to show, dropping any whose provider went away. */
     fun hostedForDisplay(): List<HostedWidget> = repository.query().filter { hosted ->
+        if (BuiltinWidgetType.isBuiltin(hosted.id)) return@filter true
         val alive = appWidgetManager.getAppWidgetInfo(hosted.id) != null
         if (!alive) {
             host.deleteAppWidgetId(hosted.id)
@@ -124,13 +130,31 @@ class WidgetSlotController(private val activity: Activity) {
     /** Drops widgets whose provider vanished, then notifies Compose to re-read. */
     fun refresh() {
         repository.query().forEach { hosted ->
-            if (appWidgetManager.getAppWidgetInfo(hosted.id) == null) {
+            if (!BuiltinWidgetType.isBuiltin(hosted.id) && appWidgetManager.getAppWidgetInfo(hosted.id) == null) {
                 Log.w(TAG, "Provider for widget ${hosted.id} is gone; dropping it")
                 host.deleteAppWidgetId(hosted.id)
                 repository.remove(hosted.id)
             }
         }
         onChanged?.invoke()
+    }
+
+    fun addBuiltin(type: BuiltinWidgetType) {
+        if (!canAddMore()) {
+            Toast.makeText(
+                activity,
+                activity.getString(R.string.widget_limit_reached, MAX_WIDGETS),
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        if (repository.query().any { it.id == type.id }) {
+            return
+        }
+        val alignment = nextFreeAlignment(repository.query().map { it.alignment })
+        repository.add(HostedWidget(type.id, alignment = alignment, shape = WidgetShape.WIDE))
+        refresh()
+        Log.i(TAG, "Hosting builtin widget ${type.name} in $alignment")
     }
 
     fun add(provider: AppWidgetProviderInfo) {
@@ -161,7 +185,9 @@ class WidgetSlotController(private val activity: Activity) {
     }
 
     fun remove(id: Int) {
-        host.deleteAppWidgetId(id)
+        if (!BuiltinWidgetType.isBuiltin(id)) {
+            host.deleteAppWidgetId(id)
+        }
         repository.remove(id)
         refresh()
     }
