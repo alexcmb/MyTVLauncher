@@ -72,6 +72,7 @@ class SettingsRepository private constructor(context: Context) {
     companion object : SingletonHolder<SettingsRepository, Context>(::SettingsRepository) {
         private const val KEY_ACCENT = "accent"
         private const val KEY_ACCENT_AUTO = "accent_auto"
+        private const val KEY_SHOW_CLOCK = "show_clock"
         private const val KEY_CLOCK_SECONDS = "clock_seconds"
         private const val KEY_CLOCK_DATE = "clock_date"
         private const val KEY_GREETING = "greeting"
@@ -125,6 +126,11 @@ class SettingsRepository private constructor(context: Context) {
 
     fun setAccentAuto(auto: Boolean) =
         sharedPreferences.edit().putBoolean(KEY_ACCENT_AUTO, auto).apply()
+
+    fun showClock(): Boolean = sharedPreferences.getBoolean(KEY_SHOW_CLOCK, true)
+
+    fun setShowClock(show: Boolean) =
+        sharedPreferences.edit().putBoolean(KEY_SHOW_CLOCK, show).apply()
 
     fun clockShowSeconds(): Boolean = sharedPreferences.getBoolean(KEY_CLOCK_SECONDS, true)
 

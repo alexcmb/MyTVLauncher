@@ -45,6 +45,7 @@
     <string name="wallpaper_fit_fit">Ajuster</string>
     <string name="wallpaper_fit_center">Centrer</string>
     <string name="wallpaper_fit_span">Étendre</string>
+    <string name="clock_show">Afficher l\'horloge</string>
     <string name="clock_seconds">Secondes</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Salutation</string>

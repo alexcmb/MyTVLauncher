@@ -151,7 +151,12 @@ data class WidgetTile(
 )
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
-data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
+data class ClockOptions(
+    val seconds: Boolean,
+    val date: Boolean,
+    val greeting: Boolean,
+    val visible: Boolean = true,
+)
 
 /** The derived clock values shown on the left of the title bar. */
 private data class ClockValues(val time: String, val date: String?, val greeting: String?)
@@ -357,7 +362,9 @@ fun HomeScreen(
                         }
                     }
                 }
-                Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
+                if (clock.visible) {
+                    Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
+                }
                 NavRail(
                     tabs = tabs,
                     selected = selectedTab,

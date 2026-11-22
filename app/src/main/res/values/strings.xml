@@ -46,6 +46,7 @@
     <string name="wallpaper_fit_fit">Fit</string>
     <string name="wallpaper_fit_center">Center</string>
     <string name="wallpaper_fit_span">Span</string>
+    <string name="clock_show">Show clock</string>
     <string name="clock_seconds">Seconds</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Greeting</string>

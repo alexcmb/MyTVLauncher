@@ -176,6 +176,7 @@ class LauncherActivity : ComponentActivity() {
     private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
+    private var showClock by mutableStateOf(true)
     private var clockShowSeconds by mutableStateOf(true)
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
@@ -226,6 +227,7 @@ class LauncherActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         accent = settings.accent()
         accentAuto = settings.accentAuto()
+        showClock = settings.showClock()
         clockShowSeconds = settings.clockShowSeconds()
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
@@ -304,7 +306,7 @@ class LauncherActivity : ComponentActivity() {
                     HomeScreen(
                         tabs = tabs,
                         widgets = widgets,
-                        clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
+                        clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting, showClock),
                         background = background,
                         backgroundImage = backgroundImage,
                         backgroundVideo = active?.takeIf { it.kind == WallpaperKind.VIDEO }?.uri?.let(Uri::parse),
@@ -1466,6 +1468,9 @@ class LauncherActivity : ComponentActivity() {
         MenuSpec(
             title = getString(R.string.action_clock),
             items = listOf(
+                toggleItem(R.string.clock_show, showClock) {
+                    settings.setShowClock(it); showClock = it
+                },
                 toggleItem(R.string.clock_seconds, clockShowSeconds) {
                     settings.setClockShowSeconds(it); clockShowSeconds = it
                 },
