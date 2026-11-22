@@ -330,20 +330,28 @@ private fun readSystemStats(context: Context): SystemStats {
     val ramUsedPercent = if (ramTotalGb > 0) (ramTotalGb - ramAvailGb) / ramTotalGb else 0f
 
     // Network
-    val connMan = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-    val activeNet = connMan?.activeNetwork
-    val caps = connMan?.getNetworkCapabilities(activeNet)
-    val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-    val isEthernet = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
-
+    var isWifi = false
+    var isEthernet = false
     var netName = context.getString(R.string.widget_network_disconnected)
-    if (isWifi) {
-        val wifiMan = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val ssid = wifiMan?.connectionInfo?.ssid?.replace("\"", "").orEmpty()
-        netName = if (ssid.isNotEmpty() && ssid != "<unknown ssid>") "Wi-Fi: $ssid" else "Wi-Fi"
-    } else if (isEthernet) {
-        netName = "Ethernet"
-    }
+
+    try {
+        val connMan = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val activeNet = connMan?.activeNetwork
+        val caps = connMan?.getNetworkCapabilities(activeNet)
+        isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        isEthernet = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+
+        if (isWifi) {
+            var ssid: String? = null
+            try {
+                val wifiMan = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ssid = wifiMan?.connectionInfo?.ssid?.replace("\"", "").orEmpty()
+            } catch (_: Exception) {}
+            netName = if (!ssid.isNullOrEmpty() && ssid != "<unknown ssid>") "Wi-Fi: $ssid" else "Wi-Fi"
+        } else if (isEthernet) {
+            netName = "Ethernet"
+        }
+    } catch (_: Exception) {}
 
     val ip = getLocalIpAddress() ?: "127.0.0.1"
 
