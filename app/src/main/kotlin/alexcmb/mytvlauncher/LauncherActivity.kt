@@ -15,8 +15,6 @@ import alexcmb.mytvlauncher.dynamic.DynamicSchedule
 import alexcmb.mytvlauncher.wallpaper.Wallpaper
 import alexcmb.mytvlauncher.wallpaper.WallpaperKind
 import alexcmb.mytvlauncher.wallpaper.WallpaperStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import alexcmb.mytvlauncher.compose.AppOrder
 import alexcmb.mytvlauncher.compose.HomeScreen
 import alexcmb.mytvlauncher.compose.HomeTabs
@@ -167,7 +165,7 @@ class LauncherActivity : ComponentActivity() {
 
     private fun returnFocus() = focusTracker.restore()
     /** The name prompt on screen: its title, the text it starts with, and what to do with a name. */
-    private data class NamePrompt(val title: String, val initial: String, val onName: (String) -> Unit)
+    private data class NamePrompt(val title: String, val initial: String, val hint: String = "", val onName: (String) -> Unit)
     private var namePrompt by mutableStateOf<NamePrompt?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
 
@@ -449,7 +447,7 @@ class LauncherActivity : ComponentActivity() {
                     namePrompt?.let { prompt ->
                         TvTextPrompt(
                             title = prompt.title,
-                            hint = stringResource(R.string.category_hint),
+                            hint = prompt.hint.ifEmpty { stringResource(R.string.category_hint) },
                             initial = prompt.initial,
                             // A name that cleans up to nothing (blank, or a reserved '#…') is ignored.
                             onSubmit = { raw -> CategoryOptions.cleanName(raw)?.let(prompt.onName) },
@@ -1380,11 +1378,11 @@ class LauncherActivity : ComponentActivity() {
 
     private fun promptSearchCity() {
         closeMenus()
-        namePrompt = PromptSpec(
+        namePrompt = NamePrompt(
             title = getString(R.string.city_search_title),
-            hint = getString(R.string.city_search_hint),
             initial = "",
-            onName = { query ->
+            hint = getString(R.string.city_search_hint),
+            onName = { query: String ->
                 lifecycleScope.launch {
                     val results = withContext(Dispatchers.IO) { CityDetector.searchCity(query) }
                     if (results.isEmpty()) {
