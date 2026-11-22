@@ -18,7 +18,7 @@ No ads. No tracking. No clutter. Just your apps and your wallpapers.
 
 <br><br>
 
-[**Download APK (v0.14)**](https://github.com/alexcmb/MyTVLauncher/releases/latest) • [**Highlights**](#highlights) • [**Installation**](#installation)
+[**Download APK (v0.15)**](https://github.com/alexcmb/MyTVLauncher/releases/latest) • [**Highlights**](#highlights) • [**Installation**](#installation)
 
 </div>
 
@@ -32,7 +32,7 @@ Most TV launchers are cluttered with ads, recommendations, and sponsored content
 - **Dynamic wallpapers:** Choose from looping videos, day/night wallpapers, aurora effects, or your own photos.
 - **Modern design:** Smooth animations, glass effects, and accent colors that adapt to the focused app.
 - **Side rail:** Organize apps into categories, switch TV inputs (HDMI/AV), and access settings.
-- **Widgets:** Keep up to 3 widgets on your home screen. Press Up to show them and Down to hide them.
+- **Widgets & Gallery:** Manage up to 3 widgets in a full-screen visual gallery. Enjoy predesigned TV widgets (Weather & forecast, Storage & network monitor, Sun ephemeris & clock) or sideloaded app widgets. Press Up to show them and Down to hide them.
 - **Screensaver:** A floating clock and Now Playing artwork appear when your TV is idle.
 - **Privacy:** No accounts, no tracking, no telemetry, and no data collection. Works entirely offline.
 
@@ -48,10 +48,10 @@ Most TV launchers are cluttered with ads, recommendations, and sponsored content
 
 ## Installation
 
-1. Download **`MyTvLauncher-v0.14.apk`** from [**Releases**](https://github.com/alexcmb/MyTVLauncher/releases/latest).
+1. Download **`MyTvLauncher-v0.15.apk`** from [**Releases**](https://github.com/alexcmb/MyTVLauncher/releases/latest).
 2. Install it on your Android TV (using a USB drive, an app like *Send Files to TV*, or ADB):
    ```bash
-   adb install -r MyTvLauncher-v0.14.apk
+   adb install -r MyTvLauncher-v0.15.apk
    ```
 3. Press **Home** on your remote and select **My TV Launcher** as your default launcher.
 
