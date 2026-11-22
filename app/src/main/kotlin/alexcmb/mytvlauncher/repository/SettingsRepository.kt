@@ -1,5 +1,7 @@
 package alexcmb.mytvlauncher.repository
 
+import alexcmb.mytvlauncher.dynamic.City
+import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.util.SingletonHolder
 import android.content.Context
 
@@ -78,6 +80,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_BG_VIDEO = "background_video"
         private const val KEY_BG_DYNAMIC = "background_dynamic"
         private const val KEY_DYNAMIC_CITY = "dynamic_city"
+        private const val KEY_DYNAMIC_CITY_LAT = "dynamic_city_lat"
+        private const val KEY_DYNAMIC_CITY_LON = "dynamic_city_lon"
         private const val KEY_WALLPAPERS = "wallpapers"
         private const val KEY_WALLPAPER_ACTIVE = "wallpaper_active"
         private const val KEY_BG_FIT = "background_fit"
@@ -172,11 +176,30 @@ class SettingsRepository private constructor(context: Context) {
     fun clearLegacyWallpapers() =
         sharedPreferences.edit().remove(KEY_BG_IMAGE).remove(KEY_BG_VIDEO).remove(KEY_BG_DYNAMIC).apply()
 
-    /** The city sun-driven wallpapers follow (a name from Cities). */
-    fun dynamicCity(): String? = sharedPreferences.getString(KEY_DYNAMIC_CITY, null)
+    /** The city name if explicitly set by the user, or null. */
+    fun dynamicCityName(): String? = sharedPreferences.getString(KEY_DYNAMIC_CITY, null)
 
-    fun setDynamicCity(name: String) =
-        sharedPreferences.edit().putString(KEY_DYNAMIC_CITY, name).apply()
+    /** The city sun-driven wallpapers and widgets follow. */
+    fun dynamicCity(): City {
+        val name = sharedPreferences.getString(KEY_DYNAMIC_CITY, null) ?: return Cities.DEFAULT
+        if (sharedPreferences.contains(KEY_DYNAMIC_CITY_LAT) && sharedPreferences.contains(KEY_DYNAMIC_CITY_LON)) {
+            val lat = sharedPreferences.getFloat(KEY_DYNAMIC_CITY_LAT, Float.NaN).toDouble()
+            val lon = sharedPreferences.getFloat(KEY_DYNAMIC_CITY_LON, Float.NaN).toDouble()
+            if (!lat.isNaN() && !lon.isNaN()) {
+                return City(name, lat, lon)
+            }
+        }
+        return Cities.named(name)
+    }
+
+    fun setDynamicCity(city: City) =
+        sharedPreferences.edit()
+            .putString(KEY_DYNAMIC_CITY, city.name)
+            .putFloat(KEY_DYNAMIC_CITY_LAT, city.latitude.toFloat())
+            .putFloat(KEY_DYNAMIC_CITY_LON, city.longitude.toFloat())
+            .apply()
+
+    fun setDynamicCity(name: String) = setDynamicCity(Cities.named(name))
 
     fun wallpaperFit(): WallpaperFit =
         sharedPreferences.getString(KEY_BG_FIT, null)

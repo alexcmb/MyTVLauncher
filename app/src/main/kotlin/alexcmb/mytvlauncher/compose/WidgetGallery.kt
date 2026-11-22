@@ -1,6 +1,8 @@
 package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
+import alexcmb.mytvlauncher.dynamic.City
+import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.widget.HostedWidget
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import alexcmb.mytvlauncher.widget.WidgetShape
@@ -103,6 +105,8 @@ fun WidgetGallery(
     availableProviders: List<AppWidgetProviderInfo>,
     canAddMore: Boolean,
     showWidgets: Boolean,
+    dynamicCity: City = Cities.DEFAULT,
+    onOpenCityMenu: () -> Unit = {},
     onToggleShowWidgets: (Boolean) -> Unit,
     onAddBuiltin: (BuiltinWidgetType) -> Unit,
     onAddProvider: (AppWidgetProviderInfo) -> Unit,
@@ -189,7 +193,7 @@ fun WidgetGallery(
 
                 Spacer(Modifier.weight(1f))
 
-                // Placed count & Toggle show
+                // Placed count, Location pill & Toggle show
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -199,6 +203,12 @@ fun WidgetGallery(
                         color = if (canAddMore) Color(0xFF81C784) else Color(0xFFFFB74D),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
+                    )
+
+                    // Location pill
+                    LocationPill(
+                        cityName = dynamicCity.name,
+                        onClick = onOpenCityMenu,
                     )
 
                     // Toggle button for showing on home screen
@@ -275,7 +285,7 @@ fun WidgetGallery(
                                         .fillMaxSize()
                                         .padding(4.dp),
                                 ) {
-                                    BuiltinWidgetHost(type = type, shape = WidgetShape.WIDE)
+                                    BuiltinWidgetHost(type = type, shape = WidgetShape.WIDE, city = dynamicCity)
                                 }
                             }
                         }
@@ -613,6 +623,43 @@ private fun TogglePill(
         )
         Text(
             text = label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun LocationPill(
+    cityName: String,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val accent = LocalAccent.current
+
+    Row(
+        modifier = Modifier
+            .onFocusChanged { focused = it.isFocused }
+            .clickable { onClick() }
+            .glass(RoundedCornerShape(99.dp), opacity = 0.45f)
+            .border(
+                1.dp,
+                if (focused) accent else Color.White.copy(alpha = 0.15f),
+                RoundedCornerShape(99.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_location),
+            contentDescription = null,
+            tint = if (focused) accent else Color(0xFFD0D6E8),
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text = cityName,
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,

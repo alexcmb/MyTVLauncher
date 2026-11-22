@@ -539,7 +539,7 @@ private fun Hub(
             visible = widgetsShown,
             enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { -it / 3 },
             exit = fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 3 },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = HeaderHeight),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 180.dp),
         ) {
             WidgetBand(
                 modifier = Modifier
@@ -548,7 +548,7 @@ private fun Hub(
                         // Widgets aren't apps: drop the app backdrop and name back to idle.
                         if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
                     }
-                    .padding(start = RailStart, end = 48.dp)
+                    .padding(horizontal = 48.dp)
                     .focusRequester(widgetsFocus)
                     .focusGroup(),
             ) {

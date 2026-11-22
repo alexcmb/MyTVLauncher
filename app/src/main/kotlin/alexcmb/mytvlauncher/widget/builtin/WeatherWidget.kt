@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.widget.builtin
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.compose.glass
+import alexcmb.mytvlauncher.dynamic.City
 import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.repository.SettingsRepository
 import alexcmb.mytvlauncher.widget.WidgetShape
@@ -69,16 +70,13 @@ data class WeatherData(
 @Composable
 fun WeatherWidget(
     shape: WidgetShape = WidgetShape.WIDE,
+    city: City = Cities.DEFAULT,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val settings = remember { SettingsRepository.getInstance(context) }
-    val cityName = remember { settings.dynamicCity() ?: Cities.DEFAULT.name }
-    val city = remember(cityName) { Cities.named(cityName) }
+    var weather by remember(city.name) { mutableStateOf(getCachedOrFallbackWeather(context, city.name)) }
 
-    var weather by remember { mutableStateOf(getCachedOrFallbackWeather(context, city.name)) }
-
-    LaunchedEffect(city.name) {
+    LaunchedEffect(city) {
         val fetched = fetchWeather(context, city.name, city.latitude, city.longitude)
         if (fetched != null) {
             weather = fetched

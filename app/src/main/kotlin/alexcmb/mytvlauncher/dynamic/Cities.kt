@@ -39,5 +39,13 @@ object Cities {
 
     val DEFAULT = ALL.first()
 
-    fun named(name: String?): City = ALL.firstOrNull { it.name == name } ?: DEFAULT
+    fun named(name: String?, fallbackLat: Double? = null, fallbackLon: Double? = null): City {
+        if (name == null) return DEFAULT
+        val match = ALL.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        if (match != null) return match
+        if (fallbackLat != null && fallbackLon != null && !fallbackLat.isNaN() && !fallbackLon.isNaN()) {
+            return City(name, fallbackLat, fallbackLon)
+        }
+        return DEFAULT
+    }
 }
