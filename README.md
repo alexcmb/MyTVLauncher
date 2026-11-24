@@ -18,7 +18,7 @@ No ads. No tracking. No clutter. Just your apps and your wallpapers.
 
 <br><br>
 
-[**Download APK (v0.15.1)**](https://github.com/alexcmb/MyTVLauncher/releases/latest) • [**Highlights**](#highlights) • [**Installation**](#installation)
+[**Download APK (v0.15.2)**](https://github.com/alexcmb/MyTVLauncher/releases/latest) • [**Highlights**](#highlights) • [**Installation**](#installation)
 
 </div>
 
@@ -48,10 +48,10 @@ Most TV launchers are cluttered with ads, recommendations, and sponsored content
 
 ## Installation
 
-1. Download **`MyTvLauncher-v0.15.1.apk`** from [**Releases**](https://github.com/alexcmb/MyTVLauncher/releases/latest).
+1. Download **`MyTvLauncher-v0.15.2.apk`** from [**Releases**](https://github.com/alexcmb/MyTVLauncher/releases/latest).
 2. Install it on your Android TV (using a USB drive, an app like *Send Files to TV*, or ADB):
    ```bash
-   adb install -r MyTvLauncher-v0.15.1.apk
+   adb install -r MyTvLauncher-v0.15.2.apk
    ```
 3. Press **Home** on your remote and select **My TV Launcher** as your default launcher.
 
