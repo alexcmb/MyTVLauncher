@@ -85,6 +85,8 @@ internal fun NavRail(
     onSelect: (Int) -> Unit,
     onSettings: () -> Unit,
     onExit: () -> Unit,
+    onRight: (() -> Unit)? = null,
+    onDown: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     covered: Boolean = false,
 ) {
@@ -93,7 +95,7 @@ internal fun NavRail(
             // Hidden while the menu is open (the menu is the pill, unfolded) or while the
             // settings sit in its place ([covered]); it keeps the focus for their return.
             Pill(
-                tab.title, iconOf(tab, selected), pillFocus, onExit,
+                tab.title, iconOf(tab, selected), pillFocus, onExit, onRight, onDown,
                 Modifier.graphicsLayer { alpha = if (open || covered) 0f else 1f },
             ) { onOpenChange(true) }
         }
@@ -133,6 +135,8 @@ private fun Pill(
     icon: RailIcon,
     focusRequester: FocusRequester,
     onExit: () -> Unit,
+    onRight: (() -> Unit)?,
+    onDown: (() -> Unit)?,
     modifier: Modifier,
     onOpen: () -> Unit,
 ) {
@@ -144,9 +148,18 @@ private fun Pill(
             .onFocusChanged { focused = it.isFocused }
             .trackFocus()
             .onPreviewKeyEvent { event ->
-                val out = event.key == Key.DirectionRight || event.key == Key.DirectionDown
-                if (event.type == KeyEventType.KeyDown && out) onExit()
-                out
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionRight -> {
+                        if (onRight != null) onRight() else onExit()
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        if (onDown != null) onDown() else onExit()
+                        true
+                    }
+                    else -> false
+                }
             }
             .clickable { onOpen() }
             .glass(RoundedCornerShape(99.dp), opacity = 0.5f)

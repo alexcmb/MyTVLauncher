@@ -70,7 +70,7 @@ class ScreensaverService : DreamService(), LifecycleOwner, SavedStateRegistryOwn
         val store = WallpaperStore(this, settings)
         val style = settings.background()
         val active = store.library().firstOrNull { it.id == settings.activeWallpaper() }
-        val city = Cities.named(settings.dynamicCity())
+        val city = settings.dynamicCity()
         val view = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@ScreensaverService)
             setViewTreeSavedStateRegistryOwner(this@ScreensaverService)

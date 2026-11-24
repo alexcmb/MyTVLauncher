@@ -8,6 +8,8 @@ import alexcmb.mytvlauncher.compose.WidgetGallery
 import alexcmb.mytvlauncher.compose.generatedKey
 import alexcmb.mytvlauncher.widget.builtin.BuiltinWidgetHost
 import alexcmb.mytvlauncher.widget.builtin.BuiltinWidgetType
+import alexcmb.mytvlauncher.dynamic.City
+import alexcmb.mytvlauncher.dynamic.CityDetector
 import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.dynamic.DynamicSchedule
 import alexcmb.mytvlauncher.wallpaper.Wallpaper
@@ -163,7 +165,7 @@ class LauncherActivity : ComponentActivity() {
 
     private fun returnFocus() = focusTracker.restore()
     /** The name prompt on screen: its title, the text it starts with, and what to do with a name. */
-    private data class NamePrompt(val title: String, val initial: String, val onName: (String) -> Unit)
+    private data class NamePrompt(val title: String, val initial: String, val hint: String = "", val onName: (String) -> Unit)
     private var namePrompt by mutableStateOf<NamePrompt?>(null)
     private var widgets by mutableStateOf<List<WidgetTile>>(emptyList())
 
@@ -174,6 +176,7 @@ class LauncherActivity : ComponentActivity() {
     private var nowPlaying by mutableStateOf<NowPlaying?>(null)
     private var accent by mutableStateOf(AccentColor.INDIGO)
     private var accentAuto by mutableStateOf(false)
+    private var showClock by mutableStateOf(true)
     private var clockShowSeconds by mutableStateOf(true)
     private var clockShowDate by mutableStateOf(false)
     private var showGreeting by mutableStateOf(true)
@@ -224,6 +227,7 @@ class LauncherActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, factory)[BrowseViewModel::class.java]
         accent = settings.accent()
         accentAuto = settings.accentAuto()
+        showClock = settings.showClock()
         clockShowSeconds = settings.clockShowSeconds()
         clockShowDate = settings.clockShowDate()
         showGreeting = settings.showGreeting()
@@ -232,7 +236,15 @@ class LauncherActivity : ComponentActivity() {
         wallpaperFit = settings.wallpaperFit()
         wallpapers = wallpaperStore.library()
         activeWallpaper = settings.activeWallpaper()
-        dynamicCity = Cities.named(settings.dynamicCity())
+        dynamicCity = settings.dynamicCity()
+        if (settings.dynamicCityName() == null) {
+            lifecycleScope.launch {
+                val detected = withContext(Dispatchers.IO) { CityDetector.detectByIp() }
+                if (detected != null) {
+                    selectCity(detected)
+                }
+            }
+        }
         loadBackgroundImage()
         cardSize = settings.cardSize()
         showUsageCount = settings.showUsageCount()
@@ -294,7 +306,7 @@ class LauncherActivity : ComponentActivity() {
                     HomeScreen(
                         tabs = tabs,
                         widgets = widgets,
-                        clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting),
+                        clock = ClockOptions(clockShowSeconds, clockShowDate, showGreeting, showClock),
                         background = background,
                         backgroundImage = backgroundImage,
                         backgroundVideo = active?.takeIf { it.kind == WallpaperKind.VIDEO }?.uri?.let(Uri::parse),
@@ -356,6 +368,8 @@ class LauncherActivity : ComponentActivity() {
                                 availableProviders = widgetSlot.availableProviders(),
                                 canAddMore = widgetSlot.canAddMore(),
                                 showWidgets = showWidgets,
+                                dynamicCity = dynamicCity,
+                                onOpenCityMenu = ::showCityMenu,
                                 onToggleShowWidgets = {
                                     settings.setShowWidgets(it)
                                     showWidgets = it
@@ -435,7 +449,7 @@ class LauncherActivity : ComponentActivity() {
                     namePrompt?.let { prompt ->
                         TvTextPrompt(
                             title = prompt.title,
-                            hint = stringResource(R.string.category_hint),
+                            hint = prompt.hint.ifEmpty { stringResource(R.string.category_hint) },
                             initial = prompt.initial,
                             // A name that cleans up to nothing (blank, or a reserved '#…') is ignored.
                             onSubmit = { raw -> CategoryOptions.cleanName(raw)?.let(prompt.onName) },
@@ -629,7 +643,7 @@ class LauncherActivity : ComponentActivity() {
                     layoutHeightDp = layoutH,
                     alignment = h.alignment,
                     builtinContent = {
-                        BuiltinWidgetHost(type = builtin, shape = h.shape)
+                        BuiltinWidgetHost(type = builtin, shape = h.shape, city = dynamicCity)
                     },
                 )
             } else {
@@ -1039,6 +1053,12 @@ class LauncherActivity : ComponentActivity() {
                 value = widget?.let { widgetFitName(it.fit) },
                 submenu = true,
             ) { showFitMenu(id) }
+        } else if (id == BuiltinWidgetType.WEATHER.id || id == BuiltinWidgetType.SOLAR.id) {
+            items += MenuItem(
+                getString(R.string.city_location),
+                value = dynamicCity.name,
+                submenu = true,
+            ) { showCityMenu() }
         }
         items += MenuItem(getString(R.string.widget_menu_remove), divider = true) {
             closeMenus()
@@ -1209,7 +1229,7 @@ class LauncherActivity : ComponentActivity() {
             ) { showWallpaperFitMenu() }
         }
         if (shown?.dynamicSchedule is DynamicSchedule.BySun) {
-            items += MenuItem(getString(R.string.dynamic_city), value = dynamicCity.name, submenu = true) { showCityMenu() }
+            items += MenuItem(getString(R.string.city_location), value = dynamicCity.name, submenu = true) { showCityMenu() }
         }
         items += MenuItem(
             getString(R.string.background_brightness),
@@ -1293,7 +1313,7 @@ class LauncherActivity : ComponentActivity() {
             ) { showWallpaperFitMenu() },
         )
         if (wallpaper.dynamicSchedule is DynamicSchedule.BySun) {
-            items += MenuItem(getString(R.string.dynamic_city), value = dynamicCity.name, submenu = true) { showCityMenu() }
+            items += MenuItem(getString(R.string.city_location), value = dynamicCity.name, submenu = true) { showCityMenu() }
         }
         items += MenuItem(getString(R.string.wallpaper_remove), divider = true) {
             removeWallpaper(wallpaper)
@@ -1338,15 +1358,85 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
-    private fun showCityMenu() = openMenu {
-        MenuSpec(
-            title = getString(R.string.dynamic_city),
-            items = Cities.ALL.map { city ->
-                MenuItem(city.name, selected = city == dynamicCity) {
-                    settings.setDynamicCity(city.name)
-                    dynamicCity = city
+    private fun selectCity(city: City) {
+        settings.setDynamicCity(city)
+        dynamicCity = city
+        refreshWidgets()
+    }
+
+    private fun detectLocationByIp() {
+        closeMenus()
+        toast(R.string.city_detecting)
+        lifecycleScope.launch {
+            val detected = withContext(Dispatchers.IO) { CityDetector.detectByIp() }
+            if (detected != null) {
+                selectCity(detected)
+                Toast.makeText(this@LauncherActivity, getString(R.string.city_detected, detected.name), Toast.LENGTH_SHORT).show()
+            } else {
+                toast(R.string.city_detect_failed)
+            }
+        }
+    }
+
+    private fun promptSearchCity() {
+        closeMenus()
+        namePrompt = NamePrompt(
+            title = getString(R.string.city_search_title),
+            initial = "",
+            hint = getString(R.string.city_search_hint),
+            onName = { query: String ->
+                lifecycleScope.launch {
+                    val results = withContext(Dispatchers.IO) { CityDetector.searchCity(query) }
+                    if (results.isEmpty()) {
+                        toast(R.string.city_search_not_found)
+                    } else if (results.size == 1) {
+                        selectCity(results.first())
+                        Toast.makeText(this@LauncherActivity, getString(R.string.city_detected, results.first().name), Toast.LENGTH_SHORT).show()
+                    } else {
+                        openMenu {
+                            MenuSpec(
+                                title = getString(R.string.city_search_results),
+                                items = results.map { res ->
+                                    MenuItem(res.name, selected = res.name.equals(dynamicCity.name, ignoreCase = true)) {
+                                        selectCity(res)
+                                        closeMenus()
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
-            },
+            }
+        )
+    }
+
+    private fun showCityMenu() = openMenu {
+        val items = mutableListOf<MenuItem>()
+        // 1. Auto-detect by IP
+        items += MenuItem(getString(R.string.city_auto_detect)) {
+            detectLocationByIp()
+        }
+        // 2. Manual search
+        items += MenuItem(getString(R.string.city_search), submenu = true) {
+            promptSearchCity()
+        }
+        // If current city is not in Cities.ALL, show it at the top of the list
+        val inPresets = Cities.ALL.any { it.name.equals(dynamicCity.name, ignoreCase = true) }
+        if (!inPresets) {
+            items += MenuItem(dynamicCity.name, selected = true, divider = true) {
+                // already selected
+            }
+        }
+        // 3. Preset cities
+        Cities.ALL.forEachIndexed { index, city ->
+            val isFirst = index == 0 && inPresets
+            items += MenuItem(city.name, selected = city.name.equals(dynamicCity.name, ignoreCase = true), divider = isFirst) {
+                selectCity(city)
+            }
+        }
+        MenuSpec(
+            title = getString(R.string.city_location),
+            items = items,
         )
     }
 
@@ -1378,6 +1468,9 @@ class LauncherActivity : ComponentActivity() {
         MenuSpec(
             title = getString(R.string.action_clock),
             items = listOf(
+                toggleItem(R.string.clock_show, showClock) {
+                    settings.setShowClock(it); showClock = it
+                },
                 toggleItem(R.string.clock_seconds, clockShowSeconds) {
                     settings.setClockShowSeconds(it); clockShowSeconds = it
                 },

@@ -46,6 +46,7 @@
     <string name="wallpaper_fit_fit">Fit</string>
     <string name="wallpaper_fit_center">Center</string>
     <string name="wallpaper_fit_span">Span</string>
+    <string name="clock_show">Show clock</string>
     <string name="clock_seconds">Seconds</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Greeting</string>
@@ -111,6 +112,7 @@
     <string name="widget_solar_sunrise">Sunrise</string>
     <string name="widget_solar_sunset">Sunset</string>
     <string name="widget_solar_noon">Solar Noon</string>
+    <string name="widget_solar_arc_title">Sun</string>
     <string name="widget_weather_condition_clear">Sunny</string>
     <string name="widget_weather_condition_partly_cloudy">Partly cloudy</string>
     <string name="widget_weather_condition_cloudy">Cloudy</string>
@@ -202,4 +204,14 @@
     <string name="wallpaper_apply">Apply</string>
     <string name="wallpaper_remove">Remove from the library</string>
     <string name="widgets_show">Show widgets</string>
+    <string name="city_location">Location</string>
+    <string name="city_auto_detect">Detect location (IP)</string>
+    <string name="city_search">Search city…</string>
+    <string name="city_search_title">Search city</string>
+    <string name="city_search_hint">E.g., Lyon, Marseille, Montreal…</string>
+    <string name="city_search_results">Search results</string>
+    <string name="city_detecting">Detecting location…</string>
+    <string name="city_detected">Location set: %s</string>
+    <string name="city_detect_failed">Location detection failed</string>
+    <string name="city_search_not_found">No city found</string>
 </resources>

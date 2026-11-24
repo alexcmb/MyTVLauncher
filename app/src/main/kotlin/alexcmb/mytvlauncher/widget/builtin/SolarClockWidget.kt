@@ -2,6 +2,7 @@ package alexcmb.mytvlauncher.widget.builtin
 
 import alexcmb.mytvlauncher.R
 import alexcmb.mytvlauncher.compose.glass
+import alexcmb.mytvlauncher.dynamic.City
 import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.dynamic.SunPosition
 import alexcmb.mytvlauncher.repository.SettingsRepository
@@ -62,18 +63,14 @@ data class SolarEphemeris(
 @Composable
 fun SolarClockWidget(
     shape: WidgetShape = WidgetShape.WIDE,
+    city: City = Cities.DEFAULT,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
-    val settings = remember { SettingsRepository.getInstance(context) }
-    val cityName = remember { settings.dynamicCity() ?: Cities.DEFAULT.name }
-    val city = remember(cityName) { Cities.named(cityName) }
-
     var now by remember { mutableStateOf(Date()) }
-    var ephemeris by remember { mutableStateOf(computeSolarEphemeris(now.time, city.latitude, city.longitude)) }
+    var ephemeris by remember(city, now) { mutableStateOf(computeSolarEphemeris(now.time, city.latitude, city.longitude)) }
 
-    // Tick every second for the clock
-    LaunchedEffect(city.name) {
+    // Tick every second for the clock and ephemeris
+    LaunchedEffect(city) {
         while (true) {
             delay(1000)
             val currentTime = Date()
@@ -129,6 +126,9 @@ private fun WideSolarLayout(
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 Box(
                     modifier = Modifier
@@ -147,7 +147,7 @@ private fun WideSolarLayout(
             Text(
                 text = timeStr,
                 color = Color.White,
-                fontSize = 42.sp,
+                fontSize = 40.sp,
                 fontWeight = FontWeight.Light,
             )
 
@@ -172,69 +172,103 @@ private fun WideSolarLayout(
         // Right Column: Solar Arc & Sunrise/Sunset
         Column(
             modifier = Modifier
-                .weight(1.1f)
+                .weight(1.25f)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            // Header
+            // Header: Sun icon + "Soleil" / "Sun" title, and Alt badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = stringResource(R.string.widget_builtin_solar_title),
-                    color = Color(0xFFD0D6E8),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = "Alt: ${ephemeris.currentAltitude.toInt()}°",
-                    color = Color(0xFF9AA0B4),
-                    fontSize = 11.sp,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(if (ephemeris.isDay) R.drawable.ic_weather_sun else R.drawable.ic_day_night),
+                        contentDescription = null,
+                        tint = if (ephemeris.isDay) Color(0xFFFFB74D) else Color(0xFF90CAF9),
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.widget_solar_arc_title),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .background(Color.White.copy(alpha = 0.12f), RoundedCornerShape(99.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = "Alt ${ephemeris.currentAltitude.toInt()}°",
+                        color = Color(0xFFD0D6E8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
 
-            // Visual Sun Arc
+            // Visual Sun Arc (height 56dp for great visibility)
             SunArcView(
                 progress = ephemeris.progress,
                 isDay = ephemeris.isDay,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(56.dp),
             )
 
-            // Sunrise and Sunset labels
+            // Sunrise and Sunset labels as clean vertical blocks with bold 13sp time
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_weather_sun),
-                        contentDescription = null,
-                        tint = Color(0xFFFFB74D),
-                        modifier = Modifier.size(13.dp),
-                    )
+                Column(horizontalAlignment = Alignment.Start) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_weather_sun),
+                            contentDescription = null,
+                            tint = Color(0xFFFFB74D),
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            text = ephemeris.sunriseHourMin,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                     Text(
-                        text = "${stringResource(R.string.widget_solar_sunrise)} ${ephemeris.sunriseHourMin}",
-                        color = Color(0xFFD0D6E8),
-                        fontSize = 11.sp,
+                        text = stringResource(R.string.widget_solar_sunrise),
+                        color = Color(0xFF9AA0B4),
+                        fontSize = 10.sp,
                     )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_day_night),
-                        contentDescription = null,
-                        tint = Color(0xFF90CAF9),
-                        modifier = Modifier.size(13.dp),
-                    )
+                Column(horizontalAlignment = Alignment.End) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = ephemeris.sunsetHourMin,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.ic_day_night),
+                            contentDescription = null,
+                            tint = Color(0xFF90CAF9),
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
                     Text(
-                        text = "${stringResource(R.string.widget_solar_sunset)} ${ephemeris.sunsetHourMin}",
-                        color = Color(0xFFD0D6E8),
-                        fontSize = 11.sp,
+                        text = stringResource(R.string.widget_solar_sunset),
+                        color = Color(0xFF9AA0B4),
+                        fontSize = 10.sp,
                     )
                 }
             }
@@ -258,11 +292,11 @@ private fun CompactSolarLayout(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(cityName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(cityName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Box(
                 modifier = Modifier
                     .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(99.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
             ) {
                 Text(stringResource(ephemeris.phaseRes), color = Color(0xFFFFD54F), fontSize = 9.sp)
             }
@@ -280,15 +314,32 @@ private fun CompactSolarLayout(
             isDay = ephemeris.isDay,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp),
+                .height(38.dp),
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("↑ ${ephemeris.sunriseHourMin}", color = Color(0xFFFFB74D), fontSize = 10.sp)
-            Text("↓ ${ephemeris.sunsetHourMin}", color = Color(0xFF90CAF9), fontSize = 10.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_weather_sun),
+                    contentDescription = null,
+                    tint = Color(0xFFFFB74D),
+                    modifier = Modifier.size(11.dp),
+                )
+                Text(ephemeris.sunriseHourMin, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(ephemeris.sunsetHourMin, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Icon(
+                    painter = painterResource(R.drawable.ic_day_night),
+                    contentDescription = null,
+                    tint = Color(0xFF90CAF9),
+                    modifier = Modifier.size(11.dp),
+                )
+            }
         }
     }
 }
@@ -302,57 +353,67 @@ private fun SunArcView(
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val horizonY = h * 0.85f
+        val horizonY = h * 0.82f
 
         // Horizon line
         drawLine(
-            color = Color.White.copy(alpha = 0.2f),
+            color = Color.White.copy(alpha = 0.22f),
             start = Offset(0f, horizonY),
             end = Offset(w, horizonY),
-            strokeWidth = 1.5f,
+            strokeWidth = 2f,
         )
 
         // Arc path
         val arcPath = Path().apply {
-            moveTo(w * 0.1f, horizonY)
-            quadraticBezierTo(w * 0.5f, -h * 0.1f, w * 0.9f, horizonY)
+            moveTo(w * 0.08f, horizonY)
+            quadraticBezierTo(w * 0.5f, -h * 0.08f, w * 0.92f, horizonY)
         }
 
         drawPath(
             path = arcPath,
             color = Color.White.copy(alpha = 0.35f),
             style = Stroke(
-                width = 2f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f),
+                width = 2.2f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 7f), 0f),
             ),
         )
 
         // Sun position along arc
         val t = progress.coerceIn(0f, 1f)
-        val p0x = w * 0.1f
+        val p0x = w * 0.08f
         val p0y = horizonY
         val p1x = w * 0.5f
-        val p1y = -h * 0.1f
-        val p2x = w * 0.9f
+        val p1y = -h * 0.08f
+        val p2x = w * 0.92f
         val p2y = horizonY
 
         val sunX = (1 - t) * (1 - t) * p0x + 2 * (1 - t) * t * p1x + t * t * p2x
         val sunY = if (isDay) {
             (1 - t) * (1 - t) * p0y + 2 * (1 - t) * t * p1y + t * t * p2y
         } else {
-            horizonY + 8f
+            horizonY + 10f
         }
 
-        // Sun glow & core
+        // Multi-layer glowing celestial body
         val sunColor = if (isDay) Color(0xFFFFC107) else Color(0xFF90CAF9)
+        val coreColor = if (isDay) Color(0xFFFFF9C4) else Color(0xFFE1F5FE)
+
+        // Outer glow
         drawCircle(
-            color = sunColor.copy(alpha = 0.35f),
-            radius = 10f,
+            color = sunColor.copy(alpha = 0.22f),
+            radius = 14f,
             center = Offset(sunX, sunY),
         )
+        // Mid glow
         drawCircle(
-            color = sunColor,
-            radius = 5f,
+            color = sunColor.copy(alpha = 0.5f),
+            radius = 9f,
+            center = Offset(sunX, sunY),
+        )
+        // Bright core
+        drawCircle(
+            color = coreColor,
+            radius = 5.5f,
             center = Offset(sunX, sunY),
         )
     }

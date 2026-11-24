@@ -1,6 +1,8 @@
 package alexcmb.mytvlauncher.compose
 
 import alexcmb.mytvlauncher.R
+import alexcmb.mytvlauncher.dynamic.City
+import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.widget.HostedWidget
 import alexcmb.mytvlauncher.widget.WidgetAlignment
 import alexcmb.mytvlauncher.widget.WidgetShape
@@ -17,6 +19,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -49,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -103,6 +107,8 @@ fun WidgetGallery(
     availableProviders: List<AppWidgetProviderInfo>,
     canAddMore: Boolean,
     showWidgets: Boolean,
+    dynamicCity: City = Cities.DEFAULT,
+    onOpenCityMenu: () -> Unit = {},
     onToggleShowWidgets: (Boolean) -> Unit,
     onAddBuiltin: (BuiltinWidgetType) -> Unit,
     onAddProvider: (AppWidgetProviderInfo) -> Unit,
@@ -140,11 +146,18 @@ fun WidgetGallery(
     }
 
     val initialFocus = remember { FocusRequester() }
+    val locationFocus = remember { FocusRequester() }
+    val toggleFocus = remember { FocusRequester() }
+    val slotRequesters = remember { List(3) { FocusRequester() } }
+    val filterRequesters = remember { List(WidgetFilter.entries.size) { FocusRequester() } }
     var hasFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        if (!hasFocus) runCatching { initialFocus.requestFocus() }
+        if (!hasFocus) {
+            val target = if (entries.isNotEmpty()) initialFocus else slotRequesters[0]
+            runCatching { target.requestFocus() }
+        }
     }
 
     Box(
@@ -158,6 +171,7 @@ fun WidgetGallery(
                     1f to Color.Black.copy(alpha = 0.90f),
                 ),
             )
+            .focusGroup()
             .onFocusChanged { hasFocus = it.hasFocus },
     ) {
         Column(
@@ -189,7 +203,7 @@ fun WidgetGallery(
 
                 Spacer(Modifier.weight(1f))
 
-                // Placed count & Toggle show
+                // Placed count, Location pill & Toggle show
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -201,11 +215,33 @@ fun WidgetGallery(
                         fontWeight = FontWeight.Medium,
                     )
 
+                    // Location pill
+                    LocationPill(
+                        cityName = dynamicCity.name,
+                        onClick = onOpenCityMenu,
+                        modifier = Modifier
+                            .focusRequester(locationFocus)
+                            .focusProperties {
+                                up = FocusRequester.Cancel
+                                left = FocusRequester.Cancel
+                                right = toggleFocus
+                                down = slotRequesters[0]
+                            },
+                    )
+
                     // Toggle button for showing on home screen
                     TogglePill(
                         label = stringResource(R.string.widgets_show),
                         active = showWidgets,
                         onClick = { onToggleShowWidgets(!showWidgets) },
+                        modifier = Modifier
+                            .focusRequester(toggleFocus)
+                            .focusProperties {
+                                up = FocusRequester.Cancel
+                                left = locationFocus
+                                right = FocusRequester.Cancel
+                                down = slotRequesters[2]
+                            },
                     )
                 }
             }
@@ -213,6 +249,10 @@ fun WidgetGallery(
             // Visual Slots Band: Start / Center / End
             ActiveSlotsBar(
                 hostedWidgets = hostedWidgets,
+                slotRequesters = slotRequesters,
+                locationFocus = locationFocus,
+                toggleFocus = toggleFocus,
+                filterRequesters = filterRequesters,
                 onOptions = onOptions,
                 onEmptyClick = { runCatching { initialFocus.requestFocus() } },
                 modifier = Modifier
@@ -228,8 +268,21 @@ fun WidgetGallery(
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                WidgetFilter.entries.forEach { f ->
-                    FilterPill(stringResource(f.label), selected = f == filter) { filter = f }
+                WidgetFilter.entries.forEachIndexed { idx, f ->
+                    FilterPill(
+                        title = stringResource(f.label),
+                        selected = f == filter,
+                        modifier = Modifier
+                            .focusRequester(filterRequesters[idx])
+                            .focusProperties {
+                                up = when (idx) {
+                                    0 -> slotRequesters[0]
+                                    1 -> slotRequesters[1]
+                                    2 -> slotRequesters[1]
+                                    else -> slotRequesters[2]
+                                }
+                            },
+                    ) { filter = f }
                 }
             }
 
@@ -275,7 +328,7 @@ fun WidgetGallery(
                                         .fillMaxSize()
                                         .padding(4.dp),
                                 ) {
-                                    BuiltinWidgetHost(type = type, shape = WidgetShape.WIDE)
+                                    BuiltinWidgetHost(type = type, shape = WidgetShape.WIDE, city = dynamicCity)
                                 }
                             }
                         }
@@ -322,6 +375,10 @@ fun WidgetGallery(
 @Composable
 private fun ActiveSlotsBar(
     hostedWidgets: List<HostedWidget>,
+    slotRequesters: List<FocusRequester>,
+    locationFocus: FocusRequester,
+    toggleFocus: FocusRequester,
+    filterRequesters: List<FocusRequester>,
     onOptions: (Int) -> Unit,
     onEmptyClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -339,7 +396,7 @@ private fun ActiveSlotsBar(
             WidgetAlignment.END to R.string.widget_slot_end,
         )
 
-        alignments.forEach { (alignment, labelRes) ->
+        alignments.forEachIndexed { index, (alignment, labelRes) ->
             val widget = hostedWidgets.firstOrNull { it.alignment == alignment }
             SlotCard(
                 alignmentName = stringResource(labelRes),
@@ -347,7 +404,15 @@ private fun ActiveSlotsBar(
                 onClick = {
                     if (widget != null) onOptions(widget.id) else onEmptyClick()
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(slotRequesters[index])
+                    .focusProperties {
+                        up = if (index < 2) locationFocus else toggleFocus
+                        down = filterRequesters.getOrNull(index) ?: FocusRequester.Default
+                        left = if (index > 0) slotRequesters[index - 1] else FocusRequester.Cancel
+                        right = if (index < 2) slotRequesters[index + 1] else FocusRequester.Cancel
+                    },
             )
         }
     }
@@ -558,14 +623,19 @@ private fun ProviderPreview(provider: AppWidgetProviderInfo) {
 }
 
 @Composable
-private fun FilterPill(title: String, selected: Boolean, onSelect: () -> Unit) {
+private fun FilterPill(
+    title: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onSelect: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     Text(
         text = title,
         color = if (selected) Color.White else Muted,
         fontSize = 14.sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onSelect()
@@ -588,12 +658,13 @@ private fun TogglePill(
     label: String,
     active: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val accent = LocalAccent.current
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .onFocusChanged { focused = it.isFocused }
             .clickable { onClick() }
             .glass(RoundedCornerShape(99.dp), opacity = 0.45f)
@@ -613,6 +684,44 @@ private fun TogglePill(
         )
         Text(
             text = label,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun LocationPill(
+    cityName: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val accent = LocalAccent.current
+
+    Row(
+        modifier = modifier
+            .onFocusChanged { focused = it.isFocused }
+            .clickable { onClick() }
+            .glass(RoundedCornerShape(99.dp), opacity = 0.45f)
+            .border(
+                1.dp,
+                if (focused) accent else Color.White.copy(alpha = 0.15f),
+                RoundedCornerShape(99.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_location),
+            contentDescription = null,
+            tint = if (focused) accent else Color(0xFFD0D6E8),
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text = cityName,
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,

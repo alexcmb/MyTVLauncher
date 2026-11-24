@@ -14,6 +14,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -45,6 +46,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -167,7 +169,8 @@ fun WallpaperGallery(
                     1f to Color.Black.copy(alpha = 0.88f),
                 )
             )
-            .onFocusChanged { hasFocus = it.hasFocus },
+            .onFocusChanged { hasFocus = it.hasFocus }
+            .focusGroup(),
     ) {
         Column(Modifier.fillMaxSize().padding(top = 36.dp)) {
             Row(Modifier.padding(horizontal = 56.dp), verticalAlignment = Alignment.Bottom) {
@@ -269,6 +272,7 @@ private fun FilterPill(title: String, selected: Boolean, onSelect: () -> Unit) {
         fontSize = 14.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
+            .focusProperties { up = FocusRequester.Cancel }
             .onFocusChanged {
                 focused = it.isFocused
                 if (it.isFocused) onSelect()

@@ -1,5 +1,7 @@
 package alexcmb.mytvlauncher.widget.builtin
 
+import alexcmb.mytvlauncher.dynamic.City
+import alexcmb.mytvlauncher.dynamic.Cities
 import alexcmb.mytvlauncher.widget.WidgetShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,13 +12,14 @@ import androidx.compose.ui.Modifier
 fun BuiltinWidgetHost(
     type: BuiltinWidgetType,
     shape: WidgetShape = WidgetShape.WIDE,
+    city: City = Cities.DEFAULT,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         when (type) {
-            BuiltinWidgetType.WEATHER -> WeatherWidget(shape = shape)
+            BuiltinWidgetType.WEATHER -> WeatherWidget(shape = shape, city = city)
             BuiltinWidgetType.SYSTEM -> SystemMonitorWidget(shape = shape)
-            BuiltinWidgetType.SOLAR -> SolarClockWidget(shape = shape)
+            BuiltinWidgetType.SOLAR -> SolarClockWidget(shape = shape, city = city)
         }
     }
 }

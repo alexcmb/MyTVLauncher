@@ -151,7 +151,12 @@ data class WidgetTile(
 )
 
 /** Title-bar clock preferences; the live values are derived inside the bar. */
-data class ClockOptions(val seconds: Boolean, val date: Boolean, val greeting: Boolean)
+data class ClockOptions(
+    val seconds: Boolean,
+    val date: Boolean,
+    val greeting: Boolean,
+    val visible: Boolean = true,
+)
 
 /** The derived clock values shown on the left of the title bar. */
 private data class ClockValues(val time: String, val date: String?, val greeting: String?)
@@ -200,6 +205,8 @@ fun HomeScreen(
     // The hub's dock, where the focus starts, and the grid of the other tabs.
     val dockFocus = remember { FocusRequester() }
     val gridFocus = remember { FocusRequester() }
+    val nowPlayingFocus = remember { FocusRequester() }
+    val widgetsFocus = remember { FocusRequester() }
     var railFocused by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     // Something else took the focus while the menu was open (sleep mode, an overlay): close
@@ -291,7 +298,12 @@ fun HomeScreen(
                 animationSpec = tween(durationMillis = if (contentHidden) 800 else 250),
                 label = "content",
             )
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = contentAlpha }) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = contentAlpha }
+                    .focusProperties { canFocus = !contentHidden }
+            ) {
                 // The tab fills the screen: the hub uses all of it (its media card up top, its
                 // dock down below); the grids start under the header. Everything lines up on
                 // the menu pill's left edge.
@@ -333,6 +345,8 @@ fun HomeScreen(
                             dockFocus = dockFocus,
                             railFocus = tabsFocus,
                             widgetsShown = widgetsShown,
+                            nowPlayingFocus = nowPlayingFocus,
+                            widgetsFocus = widgetsFocus,
                         )
                         shown is SourcesTab -> Box(Modifier.padding(top = HeaderHeight)) {
                             SourcesGrid(shown.sources, cardSize, gridFocus, { runCatching { tabsFocus.requestFocus() } }, onOpenSource)
@@ -357,7 +371,9 @@ fun HomeScreen(
                         }
                     }
                 }
-                Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
+                if (clock.visible) {
+                    Clock(clock, Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 48.dp))
+                }
                 NavRail(
                     tabs = tabs,
                     selected = selectedTab,
@@ -371,6 +387,21 @@ fun HomeScreen(
                     },
                     onSettings = onSettings,
                     onExit = { focusContent() },
+                    onRight = {
+                        when {
+                            selectedTab == 0 && nowPlaying != null -> runCatching { nowPlayingFocus.requestFocus() }
+                            selectedTab == 0 && widgetsShown -> runCatching { widgetsFocus.requestFocus() }
+                            selectedTab == 0 -> runCatching { dockFocus.requestFocus() }
+                            else -> runCatching { gridFocus.requestFocus() }
+                        }
+                    },
+                    onDown = {
+                        when {
+                            selectedTab == 0 && widgetsShown -> runCatching { widgetsFocus.requestFocus() }
+                            selectedTab == 0 -> runCatching { dockFocus.requestFocus() }
+                            else -> runCatching { gridFocus.requestFocus() }
+                        }
+                    },
                     covered = menuCovered,
                     modifier = Modifier.align(Alignment.TopStart).onFocusChanged { railFocused = it.hasFocus },
                 )
@@ -481,19 +512,18 @@ private fun Hub(
     dockFocus: FocusRequester,
     railFocus: FocusRequester,
     widgetsShown: Boolean,
+    nowPlayingFocus: FocusRequester,
+    widgetsFocus: FocusRequester,
 ) {
     // Which widget holds focus, if any — drives the spotlight that dims everything else.
     var focusedWidget by remember { mutableStateOf<Int?>(null) }
     var nowPlayingFocused by remember { mutableStateOf(false) }
     var dockFocused by remember { mutableStateOf(false) }
-    val nowPlayingFocus = remember { FocusRequester() }
     val spotlight by animateFloatAsState(
         targetValue = if (focusedWidget != null) 1f else 0f,
         animationSpec = tween(durationMillis = 200),
         label = "spotlight",
     )
-    // The widget band, so Up from the dock lands in it whatever card it's on.
-    val widgetsFocus = remember { FocusRequester() }
 
     Box(
         Modifier
@@ -539,7 +569,7 @@ private fun Hub(
             visible = widgetsShown,
             enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { -it / 3 },
             exit = fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 3 },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = HeaderHeight),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 180.dp),
         ) {
             WidgetBand(
                 modifier = Modifier
@@ -548,7 +578,7 @@ private fun Hub(
                         // Widgets aren't apps: drop the app backdrop and name back to idle.
                         if (it.hasFocus) onWidgetsFocused() else focusedWidget = null
                     }
-                    .padding(start = RailStart, end = 48.dp)
+                    .padding(horizontal = 48.dp)
                     .focusRequester(widgetsFocus)
                     .focusGroup(),
             ) {

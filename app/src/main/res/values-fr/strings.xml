@@ -45,6 +45,7 @@
     <string name="wallpaper_fit_fit">Ajuster</string>
     <string name="wallpaper_fit_center">Centrer</string>
     <string name="wallpaper_fit_span">Étendre</string>
+    <string name="clock_show">Afficher l\'horloge</string>
     <string name="clock_seconds">Secondes</string>
     <string name="clock_date">Date</string>
     <string name="clock_greeting">Salutation</string>
@@ -110,6 +111,7 @@
     <string name="widget_solar_sunrise">Lever</string>
     <string name="widget_solar_sunset">Coucher</string>
     <string name="widget_solar_noon">Midi solaire</string>
+    <string name="widget_solar_arc_title">Soleil</string>
     <string name="widget_weather_condition_clear">Ensoleillé</string>
     <string name="widget_weather_condition_partly_cloudy">Éclaircies</string>
     <string name="widget_weather_condition_cloudy">Nuageux</string>
@@ -201,4 +203,14 @@
     <string name="wallpaper_apply">Appliquer</string>
     <string name="wallpaper_remove">Retirer de la bibliothèque</string>
     <string name="widgets_show">Afficher les widgets</string>
+    <string name="city_location">Localisation</string>
+    <string name="city_auto_detect">Détecter ma position (IP)</string>
+    <string name="city_search">Rechercher une ville…</string>
+    <string name="city_search_title">Rechercher une ville</string>
+    <string name="city_search_hint">Ex. Lyon, Marseille, Montréal…</string>
+    <string name="city_search_results">Résultats de recherche</string>
+    <string name="city_detecting">Détection en cours…</string>
+    <string name="city_detected">Position définie : %s</string>
+    <string name="city_detect_failed">Échec de détection de position</string>
+    <string name="city_search_not_found">Aucune ville trouvée</string>
 </resources>
