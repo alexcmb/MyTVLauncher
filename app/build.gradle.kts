@@ -90,7 +90,7 @@ dependencies {
     }
 
     // Compose for TV — the whole UI.
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    implementation(platform("androidx.compose:compose-bom:2026.11.01"))
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.runtime:runtime-livedata")
     implementation("androidx.activity:activity-compose")
