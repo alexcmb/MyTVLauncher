@@ -335,7 +335,7 @@ fun WidgetGallery(
 
                         is WidgetEntry.Provider -> {
                             val provider = entry.provider
-                            val title = provider.loadLabel(context.packageManager).toString()
+                            val title = provider.loadLabel(context.packageManager)
                             val hosted = hostedWidgets.firstOrNull { h ->
                                 !BuiltinWidgetType.isBuiltin(h.id) &&
                                     appWidgetManager.getAppWidgetInfo(h.id)?.provider == provider.provider
