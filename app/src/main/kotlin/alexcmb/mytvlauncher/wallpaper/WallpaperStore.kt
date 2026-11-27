@@ -29,7 +29,7 @@ class WallpaperStore(private val context: Context, private val settings: Setting
 
     sealed interface AddResult {
         data class Added(val wallpaper: Wallpaper) : AddResult
-        data object Failed : AddResult
+        object Failed : AddResult
     }
 
     private val importer = DynamicWallpaperImporter(context)

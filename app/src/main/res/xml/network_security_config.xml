@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Pin Root and Intermediate CAs for public weather and IP geolocation endpoints. -->
+    <domain-config>
+        <domain includeSubdomains="true">open-meteo.com</domain>
+        <pin-set expiration="2028-01-01">
+            <!-- ISRG Root X1 -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+            <!-- ISRG Root X2 -->
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+            <!-- Let's Encrypt Root YE / YR -->
+            <pin digest="SHA-256">sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=</pin>
+            <pin digest="SHA-256">fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</pin>
+        </pin-set>
+    </domain-config>
+
+    <domain-config>
+        <domain includeSubdomains="true">freeipapi.com</domain>
+        <domain includeSubdomains="true">ipapi.co</domain>
+        <pin-set expiration="2028-01-01">
+            <!-- Google Trust Services Root R4 & R1 -->
+            <pin digest="SHA-256">mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c=</pin>
+            <pin digest="SHA-256">hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=</pin>
+            <!-- GlobalSign ECC Root CA - R4 (cross-sign) -->
+            <pin digest="SHA-256">CLOmM1/OXvSPjw5UOYbAf9GKOxImEp9hhku9W90fHMk=</pin>
+            <!-- Google Trust Services WE1 -->
+            <pin digest="SHA-256">kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

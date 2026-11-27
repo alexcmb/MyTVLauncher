@@ -94,7 +94,7 @@ private val GeneratedStyles = listOf(
 private sealed interface Entry {
     val key: String
 
-    data object Add : Entry {
+    object Add : Entry {
         override val key = "#add"
     }
 

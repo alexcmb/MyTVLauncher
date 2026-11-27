@@ -23,10 +23,10 @@ class DynamicWallpaperImporter(private val context: Context) {
     sealed interface Result {
         data class Done(val schedule: DynamicSchedule, val images: Int) : Result
         /** Android before 9 can't read the pictures of a HEIC. */
-        data object Unsupported : Result
+        object Unsupported : Result
         /** An ordinary image, or a schedule we can't read. */
-        data object NotDynamic : Result
-        data object Failed : Result
+        object NotDynamic : Result
+        object Failed : Result
     }
 
     /**

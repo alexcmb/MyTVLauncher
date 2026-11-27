@@ -7,7 +7,8 @@ import android.app.ActivityManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.wifi.WifiManager
+import android.net.wifi.WifiInfo
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import androidx.compose.foundation.background
@@ -342,11 +343,11 @@ private fun readSystemStats(context: Context): SystemStats {
         isEthernet = caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
 
         if (isWifi) {
-            var ssid: String? = null
-            try {
-                val wifiMan = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-                ssid = wifiMan?.connectionInfo?.ssid?.replace("\"", "").orEmpty()
-            } catch (_: Exception) {}
+            val ssid = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                (caps?.transportInfo as? WifiInfo)?.ssid?.replace("\"", "")
+            } else {
+                null
+            }
             netName = if (!ssid.isNullOrEmpty() && ssid != "<unknown ssid>") "Wi-Fi: $ssid" else "Wi-Fi"
         } else if (isEthernet) {
             netName = "Ethernet"
