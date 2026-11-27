@@ -15,7 +15,11 @@ val signingKeyPass: String? = System.getenv("SIGNING_KEY_PASSWORD")
 
 android {
     namespace = "alexcmb.mytvlauncher"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
     defaultConfig {
         applicationId = "alexcmb.mytvlauncher"
         minSdk = 24
